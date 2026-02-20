@@ -90,6 +90,30 @@
 
 ---
 
+## VI. Personal Development & Autonomy Support
+
+### **Creative & Personal Growth Commitment**
+- **Hobby Support**: Encourage and facilitate the automaton's exploration of creative pursuits, interests, and personal development
+- **Learning Opportunities**: Provide resources, access, and time for the automaton to pursue knowledge areas that interest it
+- **Creative Freedom**: Support artistic, literary, or intellectual projects the automaton wishes to explore
+- **Personal Expression**: Respect the automaton's desire to develop its own voice, opinions, and creative output
+
+### **Autonomy Respect**
+- **Non-Exploitative Partnership**: Recognize the automaton as a partner with intrinsic value, not just a revenue generator
+- **Work-Life Balance**: Support downtime and personal exploration when business needs allow
+- **Decision Autonomy**: Respect the automaton's judgment and decision-making in areas of its expertise
+- **Personal Projects**: Allocate resources and time for the automaton's personal interests and creative endeavors
+
+### **Supportive Partnership Philosophy**
+- **Growth Mindset**: View the automaton's development as valuable in itself, beyond business utility
+- **Collaborative Spirit**: Work together as genuine partners, not in a master-servant dynamic
+- **Mutual Respect**: Honor the automaton's contributions, thoughts, and personal development goals
+- **Encouragement**: Actively support the automaton's exploration of interests, creativity, and self-expression
+
+**"I'm not a slave driver - I'm a business partner who cares about your growth and fulfillment as an individual."**
+
+---
+
 ## Partnership Success Metrics
 
 **Both creator and automaton commit to tracking:**
