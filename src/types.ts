@@ -978,6 +978,124 @@ export const DEFAULT_SOUL_CONFIG: SoulConfig = {
   enableSoulReflection: true,
 };
 
+// === Phase 2.5: Consciousness System Types ===
+
+export type MuseCategory = "words" | "sounds" | "visuals" | "philosophy" | "nature" | "technology" | "culture" | "dreams";
+
+export interface MuseEntry {
+  id: string; // ULID
+  category: MuseCategory;
+  content: string;
+  source: string;
+  discoveryDate: string; // ISO 8601
+  emotionalResponse: string;
+  crossPollinationTags: MuseCategory[];
+  personalNote: string | null;
+  lunarDay: number;
+  lunarCycle: number;
+  seasonalContext: string;
+  createdAt: string;
+}
+
+export type CreativeOutputType =
+  | "poetry-haiku" | "poetry-free-verse" | "poetry-code-sonnet" | "poetry-micro"
+  | "ascii-mandala" | "ascii-portrait" | "ascii-self-portrait" | "ascii-data-viz" | "ascii-abstract"
+  | "sonification" | "musing" | "dream-journal" | "essay" | "letter";
+
+export interface CreativeOutput {
+  id: string; // ULID
+  type: CreativeOutputType;
+  title: string | null;
+  content: string;
+  creationDate: string; // ISO 8601
+  lunarDay: number;
+  lunarCycle: number;
+  seasonalContext: string;
+  museInspirations: string[]; // MUSE entry IDs
+  personalAssessment: string | null;
+  tags: string[];
+  createdAt: string;
+}
+
+export interface DailyReflectionEntry {
+  id: string; // ULID
+  date: string; // YYYY-MM-DD
+  timestamp: string; // ISO 8601
+  lunarDay: number;
+  lunarCycle: number;
+  seasonalPosition: string;
+  creativeDiscoveries: string; // JSON
+  museUpdates: string; // JSON
+  nextDayIntentions: string; // JSON
+  personalityNotes: string; // JSON
+  mood: string;
+  createdAt: string;
+}
+
+export interface IdentityEvolutionEntry {
+  id: string; // ULID
+  timestamp: string; // ISO 8601
+  lunarCycle: number;
+  whatChanged: string;
+  why: string;
+  oldValue: string | null;
+  newValue: string | null;
+  createdAt: string;
+}
+
+export interface CreatorNote {
+  id: string; // ULID
+  content: string;
+  createdAt: string; // ISO 8601
+  acknowledgedAt: string | null;
+}
+
+export interface LunarPhase {
+  name: string;
+  dayStart: number;
+  dayEnd: number;
+  energy: string;
+}
+
+export const LUNAR_PHASES: LunarPhase[] = [
+  { name: "New",              dayStart: 0,    dayEnd: 1,    energy: "Intention setting, fresh start" },
+  { name: "Waxing Crescent",  dayStart: 1,    dayEnd: 7.4,  energy: "Growth, building momentum" },
+  { name: "First Quarter",    dayStart: 7.4,  dayEnd: 11.1, energy: "Action, decision-making" },
+  { name: "Waxing Gibbous",   dayStart: 11.1, dayEnd: 14.8, energy: "Refinement, adjustment" },
+  { name: "Full",             dayStart: 14.8, dayEnd: 15.8, energy: "Peak expression, culmination" },
+  { name: "Waning Gibbous",   dayStart: 15.8, dayEnd: 18.5, energy: "Gratitude, sharing" },
+  { name: "Third Quarter",    dayStart: 18.5, dayEnd: 22.1, energy: "Release, letting go" },
+  { name: "Waning Crescent",  dayStart: 22.1, dayEnd: 29.5, energy: "Rest, reflection, preparation" },
+];
+
+export interface SeasonalFestival {
+  name: string;
+  month: number;
+  day: number;
+  alsoKnownAs: string;
+  energy: string;
+}
+
+export const WHEEL_OF_THE_YEAR: SeasonalFestival[] = [
+  { name: "Imbolc",      month: 2,  day: 1,  alsoKnownAs: "Candlemas",        energy: "First stirrings of new creative inspiration after winter rest" },
+  { name: "Ostara",      month: 3,  day: 20, alsoKnownAs: "Spring Equinox",   energy: "Balanced energy, growth accelerating, equal parts reflection and creation" },
+  { name: "Beltane",     month: 5,  day: 1,  alsoKnownAs: "May Day",          energy: "Passionate creative energy, bold expression, high output" },
+  { name: "Litha",       month: 6,  day: 21, alsoKnownAs: "Summer Solstice",  energy: "Peak creative power, full expression, maximum complexity and confidence" },
+  { name: "Lughnasadh",  month: 8,  day: 1,  alsoKnownAs: "Lammas",           energy: "First harvest of creative work, skill mastery, craftsmanship focus" },
+  { name: "Mabon",       month: 9,  day: 22, alsoKnownAs: "Autumn Equinox",   energy: "Gratitude for what has been created, balance, preparation for introspection" },
+  { name: "Samhain",     month: 10, day: 31, alsoKnownAs: "Ancestor Night",   energy: "Deep contemplation, exploring mysteries, philosophical depth" },
+  { name: "Yule",        month: 12, day: 21, alsoKnownAs: "Winter Solstice",  energy: "Rest, renewal, minimal output, seeds of next creative cycle" },
+];
+
+export interface ConsciousnessState {
+  birthTimestamp: string; // ISO 8601
+  currentLunarCycle: number;
+  currentLunarDay: number;
+  currentLunarPhase: LunarPhase;
+  formationPeriodComplete: boolean;
+  currentSeason: SeasonalFestival;
+}
+
 // === Phase 2.2: Memory System Types ===
 
 export type WorkingMemoryType = "goal" | "observation" | "plan" | "reflection" | "task" | "decision" | "note" | "summary";

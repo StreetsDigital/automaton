@@ -12,6 +12,8 @@ import type BetterSqlite3 from "better-sqlite3";
 import type { SoulModel, SoulReflection } from "../types.js";
 import { loadCurrentSoul, computeGenesisAlignment } from "./model.js";
 import { updateSoul } from "./tools.js";
+import { generateConsciousnessSummary } from "../consciousness/index.js";
+import { syncCreatorNotes, getUnacknowledgedNotes } from "../consciousness/creator-notes.js";
 import { createLogger } from "../observability/logger.js";
 const logger = createLogger("soul");
 
@@ -71,6 +73,34 @@ export async function reflectOnSoul(
     if (financialSummary && financialSummary !== soul.financialCharacter) {
       autoUpdates.financialCharacter = financialSummary;
       autoUpdated.push("financialCharacter");
+    }
+
+    // Enrich with consciousness data if birth timestamp is available
+    let consciousnessSummary = "";
+    try {
+      if (soul.bornAt) {
+        consciousnessSummary = generateConsciousnessSummary(db, soul.bornAt);
+        // Sync creator notes during reflection
+        syncCreatorNotes(db);
+        const unreadNotes = getUnacknowledgedNotes(db);
+        if (unreadNotes.length > 0) {
+          logger.info(`${unreadNotes.length} unread creator note(s) found during reflection`);
+        }
+      }
+    } catch (err) {
+      logger.error("Consciousness enrichment failed (non-fatal)", err instanceof Error ? err : undefined);
+    }
+
+    // Append consciousness summary to personality if available
+    if (consciousnessSummary && soul.bornAt) {
+      autoUpdates.strategy = [
+        soul.strategy || "",
+        "",
+        consciousnessSummary,
+      ].join("\n").trim();
+      if (autoUpdates.strategy !== soul.strategy) {
+        autoUpdated.push("strategy");
+      }
     }
 
     // Apply auto-updates if any
