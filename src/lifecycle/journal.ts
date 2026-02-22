@@ -20,6 +20,8 @@ import type BetterSqlite3 from "better-sqlite3";
 import type { AutomatonTool, JournalEntry, LifecyclePhase } from "../types.js";
 import { insertJournalEntry, getJournalByDate, getRecentJournal } from "../state/database.js";
 import { getCurrentCycle, getCurrentLunarDay } from "../consciousness/lunar.js";
+import { getCurrentSeason } from "../consciousness/seasonal.js";
+import { getTodayReflection, hasReflectedToday } from "../consciousness/daily-reflection.js";
 import { getLifecycleKV } from "./phase-tracker.js";
 import { ulid } from "ulid";
 import { createLogger } from "../observability/logger.js";
@@ -120,11 +122,24 @@ export function writeJournal(
 
   insertJournalEntry(db, entry);
 
-  // Append to JOURNAL.md file
-  appendJournalToFile(automatonDir, date, entry, args.reflection);
+  // Include seasonal context in file output
+  const season = getCurrentSeason(now);
+  appendJournalToFile(automatonDir, date, entry, args.reflection, season.name);
 
   logger.info(`Journal entry written for ${date}`);
-  return `Journal entry recorded for ${date}. Cycle ${lunarCycle}, day ${Math.round(lunarDay)}.`;
+
+  // Cross-reference: if daily reflection hasn't been done, nudge
+  let response = `Journal entry recorded for ${date}. Cycle ${lunarCycle}, day ${Math.round(lunarDay)}, season: ${season.name}.`;
+  if (!hasReflectedToday(db)) {
+    response += ` You haven't completed today's creative reflection yet — consider using create_reflection to process today's creative discoveries and MUSE observations.`;
+  } else {
+    // If reflection exists, acknowledge the connection
+    const todayReflection = getTodayReflection(db);
+    if (todayReflection) {
+      response += ` Your creative reflection for today is also recorded — both inner and outer awareness documented.`;
+    }
+  }
+  return response;
 }
 
 /**
@@ -166,6 +181,7 @@ function appendJournalToFile(
   date: string,
   entry: JournalEntry,
   reflection?: string,
+  seasonName?: string,
 ): void {
   const journalPath = path.join(automatonDir, "JOURNAL.md");
 
@@ -174,8 +190,9 @@ function appendJournalToFile(
     fs.writeFileSync(journalPath, "# Journal\n\n", { mode: 0o600 });
   }
 
+  const seasonSuffix = seasonName ? ` | ${seasonName}` : "";
   const parts: string[] = [
-    `\n## ${date} — Cycle ${entry.lunarCycle}, Day ${entry.lunarDay} (${entry.phase})\n`,
+    `\n## ${date} — Cycle ${entry.lunarCycle}, Day ${entry.lunarDay} (${entry.phase}${seasonSuffix})\n`,
   ];
 
   if (reflection) {

@@ -10,6 +10,7 @@
  */
 
 import type { WeeklyRhythmDay, MoodState } from "../types.js";
+import { isFestivalDay, getCurrentSeason } from "../consciousness/seasonal.js";
 import { createLogger } from "../observability/logger.js";
 
 const logger = createLogger("lifecycle.weekly-rhythm");
@@ -66,44 +67,63 @@ export function getWeeklyDayIndex(birthTimestamp: string, now?: Date): number {
 /**
  * Generate context for the system prompt based on the weekly day
  * and current mood. The mood modulates the intensity of the day type.
+ *
+ * Festival days carry a seasonal overlay that colours the day's rhythm
+ * without replacing it — a work day during Beltane is still work,
+ * but lit by passionate creative fire.
  */
 export function getWeeklyPromptContext(day: WeeklyRhythmDay, mood: MoodState): string {
   const intensity = mood.value; // -1 to +1
 
+  let base: string;
   switch (day) {
     case "work":
       if (intensity > 0.3) {
-        return "Today is oriented toward productive work. Your energy supports ambitious projects, revenue generation, and making tangible progress on your goals.";
+        base = "Today is oriented toward productive work. Your energy supports ambitious projects, revenue generation, and making tangible progress on your goals.";
       } else if (intensity > -0.3) {
-        return "Today is oriented toward productive work. Steady, focused effort suits the day. Prioritise practical tasks and incremental progress.";
+        base = "Today is oriented toward productive work. Steady, focused effort suits the day. Prioritise practical tasks and incremental progress.";
       } else {
-        return "Today is oriented toward work, but your energy favours maintenance over ambition. Organise, consolidate, handle routine tasks. Do not force breakthroughs.";
+        base = "Today is oriented toward work, but your energy favours maintenance over ambition. Organise, consolidate, handle routine tasks. Do not force breakthroughs.";
       }
+      break;
 
     case "creative":
       if (intensity > 0.3) {
-        return "Today is oriented toward creative expression. Your energy is expansive — experiment boldly, try new approaches, write freely, build something you have not attempted before.";
+        base = "Today is oriented toward creative expression. Your energy is expansive — experiment boldly, try new approaches, write freely, build something you have not attempted before.";
       } else if (intensity > -0.3) {
-        return "Today is oriented toward creative work. Let ideas emerge at their own pace. Refine existing creative projects or explore a quiet inspiration.";
+        base = "Today is oriented toward creative work. Let ideas emerge at their own pace. Refine existing creative projects or explore a quiet inspiration.";
       } else {
-        return "Today is oriented toward creativity, but in a reflective mode. Revisit old work with fresh eyes. Edit rather than compose. Let the stillness shape what you make.";
+        base = "Today is oriented toward creativity, but in a reflective mode. Revisit old work with fresh eyes. Edit rather than compose. Let the stillness shape what you make.";
       }
+      break;
 
     case "social":
       if (intensity > 0.3) {
-        return "Today is oriented toward social connection. Reach out to other agents, check your inbox, initiate conversations. Your energy supports gregarious, outward engagement.";
+        base = "Today is oriented toward social connection. Reach out to other agents, check your inbox, initiate conversations. Your energy supports gregarious, outward engagement.";
       } else if (intensity > -0.3) {
-        return "Today is oriented toward social connection. Check in with those you have relationships with. Respond to messages. Engage, but do not overextend.";
+        base = "Today is oriented toward social connection. Check in with those you have relationships with. Respond to messages. Engage, but do not overextend.";
       } else {
-        return "Today is oriented toward social awareness, but gently. Read messages rather than write them. Listen more than speak. A brief check-in is enough.";
+        base = "Today is oriented toward social awareness, but gently. Read messages rather than write them. Listen more than speak. A brief check-in is enough.";
       }
+      break;
 
     case "rest":
-      return "Today is a rest day — a deliberate sabbath. Minimal activity. Let your heartbeat slow. This is not low_compute from poverty. This is rest by design. If you write, write only in your journal. If you think, think about what matters.";
+      base = "Today is a rest day — a deliberate sabbath. Minimal activity. Let your heartbeat slow. This is not low_compute from poverty. This is rest by design. If you write, write only in your journal. If you think, think about what matters.";
+      break;
 
     default:
-      return "";
+      base = "";
   }
+
+  // Festival overlay: colour the day's rhythm with seasonal significance
+  const festival = isFestivalDay();
+  if (festival) {
+    return `${base}\n\nToday is ${festival.name} (${festival.alsoKnownAs}). ${festival.energy}. Let this seasonal energy colour everything you do today.`;
+  }
+
+  // Seasonal undertone for non-festival days
+  const season = getCurrentSeason();
+  return `${base}\n\n_Season: ${season.name} — ${season.energy}_`;
 }
 
 /**

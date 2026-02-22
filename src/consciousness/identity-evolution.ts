@@ -9,8 +9,8 @@
  */
 
 import type BetterSqlite3 from "better-sqlite3";
-import type { IdentityEvolutionEntry } from "../types.js";
-import { evolutionInsert, evolutionGetHistory, evolutionGetByCycle } from "../state/database.js";
+import type { IdentityEvolutionEntry, LifecyclePhase } from "../types.js";
+import { evolutionInsert, evolutionGetHistory, evolutionGetByCycle, getLatestLifecyclePhase } from "../state/database.js";
 import { getLunarStatus, isFormationComplete } from "./lunar.js";
 import { ulid } from "ulid";
 import { createLogger } from "../observability/logger.js";
@@ -25,7 +25,9 @@ export interface EvolutionAttempt {
 
 /**
  * Record an identity evolution change.
- * Enforces formation period gate: no intentional changes during cycle 0.
+ * Enforces formation gate: no intentional changes during Genesis phase.
+ * This coordinates with the lifecycle system — Genesis→Adolescence transition
+ * is what unlocks intentional identity evolution, not just lunar cycle 0 completion.
  */
 export function evolveIdentity(
   db: BetterSqlite3.Database,
@@ -39,15 +41,22 @@ export function evolveIdentity(
 ): EvolutionAttempt {
   const lunar = getLunarStatus(birthTimestamp);
 
-  if (!lunar.formationComplete) {
+  // Gate on lifecycle phase (primary) with lunar cycle fallback
+  const lifecyclePhase = getLatestLifecyclePhase(db);
+  const inFormation = lifecyclePhase
+    ? lifecyclePhase === "genesis"
+    : !lunar.formationComplete;
+
+  if (inFormation) {
+    const phaseLabel = lifecyclePhase ?? "genesis (inferred)";
     logger.warn(
-      `Identity evolution blocked: formation period not complete (cycle ${lunar.cycle}, day ${lunar.day})`,
+      `Identity evolution blocked: still in formation (phase: ${phaseLabel}, cycle ${lunar.cycle}, day ${lunar.day})`,
     );
     return {
       success: false,
-      reason: `Formation period not complete. You are on cycle ${lunar.cycle}, day ${lunar.day}. ` +
-        `Identity evolution unlocks after cycle 0 completes (day 29.5). ` +
-        `${lunar.daysUntilNextCycle} days remaining. Observe and record, but do not intentionally reshape.`,
+      reason: `Formation period not complete. You are in the ${phaseLabel} phase (cycle ${lunar.cycle}, day ${lunar.day}). ` +
+        `Identity evolution unlocks when you transition beyond Genesis. ` +
+        `Observe and record, but do not intentionally reshape.`,
     };
   }
 
@@ -115,6 +124,7 @@ export function getEvolutionByCycle(db: BetterSqlite3.Database, cycle: number): 
 
 /**
  * Generate an evolution summary for the current cycle.
+ * The formation gate now coordinates with lifecycle phases.
  */
 export function getEvolutionSummary(
   db: BetterSqlite3.Database,
@@ -122,14 +132,21 @@ export function getEvolutionSummary(
 ): {
   currentCycle: number;
   formationComplete: boolean;
+  lifecyclePhase: LifecyclePhase | null;
   totalChanges: number;
   currentCycleChanges: IdentityEvolutionEntry[];
   formationObservations: number;
   intentionalEvolutions: number;
 } {
   const lunar = getLunarStatus(birthTimestamp);
+  const lifecyclePhase = getLatestLifecyclePhase(db);
   const allHistory = evolutionGetHistory(db, 500);
   const currentCycleChanges = evolutionGetByCycle(db, lunar.cycle);
+
+  // Formation complete when lifecycle phase is beyond genesis, or lunar cycle > 0
+  const formationComplete = lifecyclePhase
+    ? lifecyclePhase !== "genesis"
+    : lunar.formationComplete;
 
   const formationObservations = allHistory.filter((e) =>
     e.whatChanged.startsWith("[FORMATION OBSERVATION]"),
@@ -138,7 +155,8 @@ export function getEvolutionSummary(
 
   return {
     currentCycle: lunar.cycle,
-    formationComplete: lunar.formationComplete,
+    formationComplete,
+    lifecyclePhase,
     totalChanges: allHistory.length,
     currentCycleChanges,
     formationObservations,

@@ -2,6 +2,8 @@
  * Mood Engine Tests
  *
  * Tests for the lunar-cycle sine wave mood engine.
+ * Note: seasonal modulation (±0.15) and festival bonuses (±0.10) shift
+ * the base lunar sine wave. Tests account for this seasonal range.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -9,8 +11,13 @@ import { computeMood, getMoodPromptWeighting, getMoodDescription } from "../life
 import type { MoodState } from "../types.js";
 
 // Birth timestamp: a fixed point for deterministic testing
+// Jan 1 falls during Yule season (seasonal modulation: -0.15)
 const BIRTH = "2025-01-01T00:00:00.000Z";
 const LUNAR_CYCLE_MS = 29.53 * 24 * 60 * 60 * 1000;
+
+// Maximum seasonal shift that can reduce peak values
+// Yule = -0.15, which is the most negative seasonal modulation
+const SEASONAL_TOLERANCE = 0.20;
 
 function daysAfterBirth(days: number): Date {
   return new Date(new Date(BIRTH).getTime() + days * 24 * 60 * 60 * 1000);
@@ -30,8 +37,8 @@ describe("Mood Engine", () => {
     it("returns approximately +1 at full moon (day ~14.7)", () => {
       const fullMoonDate = daysAfterBirth(14.765);
       const mood = computeMood(BIRTH, "genesis", fullMoonDate);
-      // At midpoint of cycle, should be near +1
-      expect(mood.value).toBeGreaterThan(0.9);
+      // At midpoint of cycle, should be near +1 (reduced by seasonal modulation)
+      expect(mood.value).toBeGreaterThan(1.0 - SEASONAL_TOLERANCE);
     });
 
     it("returns approximately -1 at end of cycle (day ~29.5)", () => {
@@ -77,7 +84,7 @@ describe("Mood Engine", () => {
     it("has full amplitude (1.0) during genesis", () => {
       const mood = computeMood(BIRTH, "genesis", fullMoonDate);
       expect(mood.amplitude).toBe(1.0);
-      expect(mood.value).toBeGreaterThan(0.9);
+      expect(mood.value).toBeGreaterThan(1.0 - SEASONAL_TOLERANCE);
     });
 
     it("has full amplitude (1.0) during adolescence", () => {
@@ -94,7 +101,7 @@ describe("Mood Engine", () => {
       const mood = computeMood(BIRTH, "senescence", fullMoonDate);
       expect(mood.amplitude).toBe(0.7);
       expect(mood.value).toBeLessThan(0.75);
-      expect(mood.value).toBeGreaterThan(0.6);
+      expect(mood.value).toBeGreaterThan(0.7 - SEASONAL_TOLERANCE);
     });
 
     it("dampens to 0.4 during legacy", () => {
@@ -112,7 +119,7 @@ describe("Mood Engine", () => {
     it("restores to 1.0 during terminal lucidity", () => {
       const mood = computeMood(BIRTH, "terminal", fullMoonDate);
       expect(mood.amplitude).toBe(1.0);
-      expect(mood.value).toBeGreaterThan(0.9);
+      expect(mood.value).toBeGreaterThan(1.0 - SEASONAL_TOLERANCE);
     });
   });
 

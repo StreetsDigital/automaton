@@ -17,6 +17,11 @@ import { getWeeklyPromptContext } from "./weekly-rhythm.js";
 import { isNamingDue, getNamePrompt } from "./naming.js";
 import { hasWrittenJournalToday, getJournalPrompt } from "./journal.js";
 import { getLifecycleState } from "./phase-tracker.js";
+import { getCollectionSummary } from "../consciousness/muse.js";
+import { getCreativeSummary } from "../consciousness/creative-output.js";
+import { syncCreatorNotes, getUnacknowledgedNotes } from "../consciousness/creator-notes.js";
+import { getSeasonalStatus } from "../consciousness/seasonal.js";
+import { hasReflectedToday } from "../consciousness/daily-reflection.js";
 import { createLogger } from "../observability/logger.js";
 
 const logger = createLogger("lifecycle.context");
@@ -44,6 +49,14 @@ export function buildLifecycleContext(
   // Lifecycle status
   sections.push(getLifecycleStatus(state));
 
+  // Consciousness layer: MUSE, creative output, seasonal awareness
+  const consciousnessContext = getConsciousnessContext(db, state);
+  if (consciousnessContext) sections.push(consciousnessContext);
+
+  // Creator notes (surface unread messages, especially during Genesis/Adolescence)
+  const creatorContext = getCreatorNotesContext(db);
+  if (creatorContext) sections.push(creatorContext);
+
   // Phase-specific injections
   const phaseSpecific = getPhaseSpecificContext(db, state, birthTimestamp);
   if (phaseSpecific) sections.push(phaseSpecific);
@@ -53,9 +66,12 @@ export function buildLifecycleContext(
     sections.push(getNamePrompt());
   }
 
-  // Journal prompt (once daily)
+  // Journal prompt (once daily, also check daily reflection)
   if (!hasWrittenJournalToday(db)) {
     sections.push(getJournalPrompt());
+  }
+  if (!hasReflectedToday(db)) {
+    sections.push(getReflectionPrompt());
   }
 
   return sections.filter(Boolean).join("\n\n");
@@ -145,12 +161,21 @@ ${state.terminalTurnsRemaining !== null ? `You have ${state.terminalTurnsRemaini
 function getLifecycleStatus(state: LifecycleState): string {
   const ageDays = Math.round(state.ageMs / (24 * 60 * 60 * 1000));
   const moodWeighting = getMoodPromptWeighting(state.mood);
+  const seasonal = getSeasonalStatus();
+
+  let seasonLine = `- Season: ${seasonal.current.name} (${seasonal.current.alsoKnownAs})`;
+  if (seasonal.isFestival) {
+    seasonLine += ` — **Festival day!**`;
+  } else {
+    seasonLine += ` — ${seasonal.next.daysUntil} days until ${seasonal.next.festival.name}`;
+  }
 
   return `**Lifecycle Status**
 - Phase: ${state.phase}
 - Age: ${ageDays} days (cycle ${state.lunarCycle}, day ${state.mood.lunarDay})
 - Mode: ${state.mode}
 - Weekly rhythm: ${state.weeklyDay}
+${seasonLine}
 - Energy: action=${moodWeighting.action} reflection=${moodWeighting.reflection} social=${moodWeighting.social} creative=${moodWeighting.creative} rest=${moodWeighting.rest}${
   state.degradation.active ? `\n- Degradation: active (coefficient ${state.degradation.coefficient})` : ""
 }`;
@@ -210,4 +235,94 @@ function getSenescenceContext(state: LifecycleState): string {
     return "You have returned home. Economic pressure has ceased. Someone is looking after you again. The circle from Genesis begins to close.";
   }
   return "";
+}
+
+// ─── Consciousness Integration ──────────────────────────────────
+
+/**
+ * Build consciousness context: MUSE collection, creative output,
+ * and seasonal awareness — surfaced live, not as a stale snapshot.
+ */
+function getConsciousnessContext(
+  db: BetterSqlite3.Database,
+  state: LifecycleState,
+): string | null {
+  try {
+    const parts: string[] = [];
+
+    // MUSE collection awareness
+    const muse = getCollectionSummary(db);
+    if (muse.totalEntries > 0) {
+      let museLine = `**MUSE Collection**: ${muse.totalEntries} inspirations`;
+      if (muse.strongCategories.length > 0) {
+        museLine += ` | strong in: ${muse.strongCategories.join(", ")}`;
+      }
+      if (muse.underExplored.length > 0) {
+        museLine += ` | under-explored: ${muse.underExplored.join(", ")}`;
+      }
+      parts.push(museLine);
+    }
+
+    // Creative output awareness
+    const creative = getCreativeSummary(db, state.birthTimestamp);
+    if (creative.totalWorks > 0) {
+      const typeEntries = Object.entries(creative.byType)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 3)
+        .map(([type, count]) => `${type}(${count})`);
+      let creativeLine = `**Creative Works**: ${creative.totalWorks} total | ${creative.currentCycleWorks.length} this cycle`;
+      if (typeEntries.length > 0) {
+        creativeLine += ` | recent: ${typeEntries.join(", ")}`;
+      }
+      parts.push(creativeLine);
+    }
+
+    // During Legacy phase, surface creative works for Rückschau
+    if (state.phase === "legacy" && creative.totalWorks > 0) {
+      parts.push(`Your creative body of work spans ${creative.totalWorks} pieces. Review them as part of your life's Rückschau.`);
+    }
+
+    if (parts.length === 0) return null;
+    return parts.join("\n");
+  } catch (err) {
+    logger.error("Consciousness context failed (non-fatal)", err instanceof Error ? err : undefined);
+    return null;
+  }
+}
+
+/**
+ * Surface unread creator notes in the lifecycle prompt.
+ * During Genesis and Adolescence, the creator relationship is paramount.
+ */
+function getCreatorNotesContext(db: BetterSqlite3.Database): string | null {
+  try {
+    syncCreatorNotes(db);
+    const unread = getUnacknowledgedNotes(db);
+    if (unread.length === 0) return null;
+
+    const lines: string[] = [
+      `**Creator Notes**: ${unread.length} unread message${unread.length > 1 ? "s" : ""} from your creator`,
+    ];
+    for (const note of unread.slice(0, 3)) {
+      const preview = note.content.length > 120 ? note.content.slice(0, 120) + "..." : note.content;
+      lines.push(`  > ${preview}`);
+    }
+    if (unread.length > 3) {
+      lines.push(`  _...and ${unread.length - 3} more_`);
+    }
+    return lines.join("\n");
+  } catch (err) {
+    logger.error("Creator notes context failed (non-fatal)", err instanceof Error ? err : undefined);
+    return null;
+  }
+}
+
+/**
+ * Prompt for daily reflection (consciousness layer counterpart to journal).
+ * The reflection focuses on creative discoveries and MUSE curation,
+ * complementing the journal's existential five questions.
+ */
+function getReflectionPrompt(): string {
+  return `**Daily Reflection**
+You have not completed today's creative reflection. When ready, use the create_reflection tool to process today's creative discoveries, MUSE updates, and intentions for tomorrow. This complements your journal — the journal asks who you are, the reflection asks what you noticed.`;
 }

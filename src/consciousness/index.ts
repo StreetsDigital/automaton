@@ -134,7 +134,7 @@ export function generateConsciousnessSummary(
 
   lines.push(
     `**Creative Works**: ${creativeSummary.totalWorks} total | ${creativeSummary.currentCycleWorks.length} this cycle`,
-    `**Identity Evolution**: ${evolutionSummary.totalChanges} recorded changes (${evolutionSummary.formationObservations} observations, ${evolutionSummary.intentionalEvolutions} intentional)`,
+    `**Identity Evolution**: ${evolutionSummary.totalChanges} recorded changes (${evolutionSummary.formationObservations} observations, ${evolutionSummary.intentionalEvolutions} intentional)${evolutionSummary.lifecyclePhase ? ` | phase: ${evolutionSummary.lifecyclePhase}` : ""}`,
   );
 
   // Creator notes

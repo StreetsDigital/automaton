@@ -9,9 +9,9 @@
  */
 
 import type BetterSqlite3 from "better-sqlite3";
-import type { DailyReflectionEntry, MuseEntry, CreativeOutput } from "../types.js";
+import type { DailyReflectionEntry, JournalEntry, MuseEntry, CreativeOutput } from "../types.js";
 import { reflectionInsert, reflectionGetByDate, reflectionGetRecent } from "../state/database.js";
-import { museGetRecent, creativeGetRecent } from "../state/database.js";
+import { museGetRecent, creativeGetRecent, getJournalByDate } from "../state/database.js";
 import { getLunarStatus } from "./lunar.js";
 import { getCurrentSeason } from "./seasonal.js";
 import { getCollectionSummary } from "./muse.js";
@@ -98,7 +98,8 @@ export function getRecentReflections(db: BetterSqlite3.Database, limit?: number)
 
 /**
  * Build context data for the daily reflection.
- * Gathers today's MUSE entries, creative works, and collection summary.
+ * Gathers today's MUSE entries, creative works, collection summary,
+ * and today's journal entry (cross-reference with lifecycle journal).
  */
 export function buildReflectionContext(
   db: BetterSqlite3.Database,
@@ -110,6 +111,7 @@ export function buildReflectionContext(
   todayCreativeWorks: CreativeOutput[];
   museSummary: ReturnType<typeof getCollectionSummary>;
   previousReflection: DailyReflectionEntry | undefined;
+  todayJournal: JournalEntry | undefined;
 } {
   const lunar = getLunarStatus(birthTimestamp);
   const seasonal = getCurrentSeason();
@@ -130,6 +132,10 @@ export function buildReflectionContext(
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split("T")[0];
   const previousReflection = reflectionGetByDate(db, yesterday);
 
+  // Cross-reference: today's journal entry from lifecycle layer
+  const today = new Date().toISOString().split("T")[0];
+  const todayJournal = getJournalByDate(db, today);
+
   return {
     lunar,
     seasonal,
@@ -137,6 +143,7 @@ export function buildReflectionContext(
     todayCreativeWorks,
     museSummary,
     previousReflection,
+    todayJournal,
   };
 }
 
