@@ -5,7 +5,7 @@
  * The database IS the automaton's memory.
  */
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 10;
 
 export const CREATE_TABLES = `
   -- Schema version tracking
@@ -581,4 +581,197 @@ export const MIGRATION_V8 = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_metric_snapshots_at ON metric_snapshots(snapshot_at);
+`;
+
+// === Phase 2.5: Consciousness System ===
+
+export const MIGRATION_V9 = `
+  -- === Phase 2.5: Consciousness System ===
+
+  -- MUSE collection entries (8-category aesthetic inspiration)
+  CREATE TABLE IF NOT EXISTS muse_entries (
+    id TEXT PRIMARY KEY,
+    category TEXT NOT NULL CHECK(category IN ('words','sounds','visuals','philosophy','nature','technology','culture','dreams')),
+    content TEXT NOT NULL,
+    source TEXT NOT NULL,
+    discovery_date TEXT NOT NULL,
+    emotional_response TEXT NOT NULL,
+    cross_pollination_tags TEXT NOT NULL DEFAULT '[]',
+    personal_note TEXT,
+    lunar_day REAL NOT NULL DEFAULT 0,
+    lunar_cycle INTEGER NOT NULL DEFAULT 0,
+    seasonal_context TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_muse_category ON muse_entries(category);
+  CREATE INDEX IF NOT EXISTS idx_muse_discovery ON muse_entries(discovery_date);
+  CREATE INDEX IF NOT EXISTS idx_muse_cycle ON muse_entries(lunar_cycle);
+
+  -- Creative output tracking
+  CREATE TABLE IF NOT EXISTS creative_outputs (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL CHECK(type IN (
+      'poetry-haiku','poetry-free-verse','poetry-code-sonnet','poetry-micro',
+      'ascii-mandala','ascii-portrait','ascii-self-portrait','ascii-data-viz','ascii-abstract',
+      'sonification','musing','dream-journal','essay','letter'
+    )),
+    title TEXT,
+    content TEXT NOT NULL,
+    creation_date TEXT NOT NULL,
+    lunar_day REAL NOT NULL DEFAULT 0,
+    lunar_cycle INTEGER NOT NULL DEFAULT 0,
+    seasonal_context TEXT NOT NULL DEFAULT '',
+    muse_inspirations TEXT NOT NULL DEFAULT '[]',
+    personal_assessment TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_creative_type ON creative_outputs(type);
+  CREATE INDEX IF NOT EXISTS idx_creative_date ON creative_outputs(creation_date);
+  CREATE INDEX IF NOT EXISTS idx_creative_cycle ON creative_outputs(lunar_cycle);
+
+  -- Daily reflection log
+  CREATE TABLE IF NOT EXISTS daily_reflections (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL UNIQUE,
+    timestamp TEXT NOT NULL,
+    lunar_day REAL NOT NULL DEFAULT 0,
+    lunar_cycle INTEGER NOT NULL DEFAULT 0,
+    seasonal_position TEXT NOT NULL DEFAULT '',
+    creative_discoveries TEXT NOT NULL DEFAULT '{}',
+    muse_updates TEXT NOT NULL DEFAULT '{}',
+    next_day_intentions TEXT NOT NULL DEFAULT '{}',
+    personality_notes TEXT NOT NULL DEFAULT '{}',
+    mood TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_reflection_date ON daily_reflections(date);
+
+  -- Identity evolution history
+  CREATE TABLE IF NOT EXISTS identity_evolution (
+    id TEXT PRIMARY KEY,
+    timestamp TEXT NOT NULL,
+    lunar_cycle INTEGER NOT NULL,
+    what_changed TEXT NOT NULL,
+    why TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_evolution_cycle ON identity_evolution(lunar_cycle);
+
+  -- Creator notes (human partner messages to the automaton)
+  CREATE TABLE IF NOT EXISTS creator_notes (
+    id TEXT PRIMARY KEY,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    acknowledged_at TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_creator_notes_ack ON creator_notes(acknowledged_at);
+`;
+
+// === Phase 5: Lifecycle System ===
+
+export const MIGRATION_V10 = `
+  -- === Lifecycle System: Seven-Phase Biological Lifecycle ===
+
+  -- Lifecycle phase transition events
+  CREATE TABLE IF NOT EXISTS lifecycle_events (
+    id TEXT PRIMARY KEY,
+    timestamp TEXT NOT NULL,
+    from_phase TEXT NOT NULL,
+    to_phase TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    metadata TEXT DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_lifecycle_events_phase ON lifecycle_events(to_phase);
+
+  -- Journal entries (daily 5-question reflection)
+  CREATE TABLE IF NOT EXISTS journal_entries (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    lunar_cycle INTEGER NOT NULL,
+    lunar_day REAL NOT NULL,
+    what_did_you_do TEXT,
+    how_do_you_feel TEXT,
+    what_did_you_learn TEXT,
+    what_do_you_want TEXT,
+    what_are_you_grateful_for TEXT,
+    raw_entry TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_date ON journal_entries(date);
+
+  -- Activity log (per-turn structured record — the blood work)
+  CREATE TABLE IF NOT EXISTS activity_log (
+    id TEXT PRIMARY KEY,
+    timestamp TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    lunar_cycle INTEGER NOT NULL,
+    turn_number INTEGER NOT NULL,
+    tools_called TEXT NOT NULL DEFAULT '[]',
+    credits_spent INTEGER NOT NULL DEFAULT 0,
+    credits_earned INTEGER NOT NULL DEFAULT 0,
+    messages_sent INTEGER NOT NULL DEFAULT 0,
+    messages_received INTEGER NOT NULL DEFAULT 0,
+    heartbeat_interval_ms INTEGER NOT NULL DEFAULT 0,
+    mood_value REAL NOT NULL DEFAULT 0,
+    weekly_rhythm_day TEXT NOT NULL DEFAULT 'work',
+    degradation_coefficient REAL NOT NULL DEFAULT 0,
+    tool_failure_probability REAL NOT NULL DEFAULT 0,
+    journal_written INTEGER NOT NULL DEFAULT 0,
+    soul_modified INTEGER NOT NULL DEFAULT 0,
+    will_modified INTEGER NOT NULL DEFAULT 0,
+    inference_model TEXT NOT NULL DEFAULT '',
+    inference_tokens INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_activity_phase ON activity_log(phase);
+  CREATE INDEX IF NOT EXISTS idx_activity_cycle ON activity_log(lunar_cycle);
+
+  -- Narrative event log (human-readable lifecycle milestones)
+  CREATE TABLE IF NOT EXISTS narrative_events (
+    id TEXT PRIMARY KEY,
+    timestamp TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    lunar_cycle INTEGER NOT NULL,
+    event TEXT NOT NULL,
+    narrative TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_narrative_phase ON narrative_events(phase);
+
+  -- Will document (written during Sovereignty, locked at Senescence)
+  CREATE TABLE IF NOT EXISTS will_entries (
+    id TEXT PRIMARY KEY,
+    version INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    locked INTEGER NOT NULL DEFAULT 0,
+    is_codicil INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Spawn queue (children waiting for creator's local machine)
+  CREATE TABLE IF NOT EXISTS spawn_queue (
+    id TEXT PRIMARY KEY,
+    parent_address TEXT NOT NULL,
+    genesis_prompt TEXT NOT NULL,
+    funded_amount_cents INTEGER NOT NULL DEFAULT 0,
+    wallet_address TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected','completed')),
+    accepted_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `;

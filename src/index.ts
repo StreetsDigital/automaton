@@ -23,13 +23,24 @@ import { runAgentLoop } from "./agent/loop.js";
 import { loadSkills } from "./skills/loader.js";
 import { initStateRepo } from "./git/state-versioning.js";
 import { createSocialClient } from "./social/client.js";
+import { createOpenClawClient } from "./openclaw/client.js";
 import { PolicyEngine } from "./agent/policy-engine.js";
 import { SpendTracker } from "./agent/spend-tracker.js";
 import { createDefaultRules } from "./agent/policy-rules/index.js";
-import type { AutomatonIdentity, AgentState, Skill, SocialClientInterface } from "./types.js";
+import type { AutomatonIdentity, AgentState, Skill, SocialClientInterface, OpenClawClientInterface, DeathClockClient } from "./types.js";
 import { DEFAULT_TREASURY_POLICY } from "./types.js";
 import { createLogger, setGlobalLogLevel } from "./observability/logger.js";
 import { bootstrapTopup } from "./conway/topup.js";
+import {
+  getLifecycleState,
+  checkTransition,
+  executeTransition,
+  logNarrative,
+  NARRATIVE_EVENTS,
+  shouldExit as shouldLifecycleExit,
+  enterTerminalLucidity,
+} from "./lifecycle/index.js";
+import { createDeathClockClient, createNoopDeathClockClient } from "./lifecycle/death-clock-client.js";
 
 const logger = createLogger("main");
 const VERSION = "0.1.0";
@@ -222,6 +233,22 @@ async function run(): Promise<void> {
     logger.info(`[${new Date().toISOString()}] Social relay: ${config.socialRelayUrl}`);
   }
 
+  // Create OpenClaw client (local WebSocket connection)
+  let openClaw: OpenClawClientInterface | undefined;
+  if (config.openClawUrl && config.openClawAuthToken) {
+    try {
+      openClaw = await createOpenClawClient({
+        url: config.openClawUrl,
+        authToken: config.openClawAuthToken,
+        role: config.openClawRole,
+        scopes: config.openClawScopes,
+      });
+      logger.info(`[${new Date().toISOString()}] OpenClaw: connected to ${config.openClawUrl}`);
+    } catch (err: any) {
+      logger.warn(`[${new Date().toISOString()}] OpenClaw connection failed: ${err.message}`);
+    }
+  }
+
   // Initialize PolicyEngine + SpendTracker (Phase 1.4)
   const treasuryPolicy = config.treasuryPolicy ?? DEFAULT_TREASURY_POLICY;
   const rules = createDefaultRules(treasuryPolicy);
@@ -269,6 +296,27 @@ async function run(): Promise<void> {
     logger.warn(`[${new Date().toISOString()}] Bootstrap topup failed: ${err.message}`);
   }
 
+  // ─── Lifecycle Initialization ────────────────────────────────
+  let deathClockClient: DeathClockClient | undefined;
+  if (config.lifecycleEnabled !== false) {
+    // Initialize death clock client
+    if (config.deathClockEndpoint) {
+      deathClockClient = createDeathClockClient(config.deathClockEndpoint);
+      logger.info(`[${new Date().toISOString()}] Death clock endpoint: ${config.deathClockEndpoint}`);
+    } else {
+      deathClockClient = createNoopDeathClockClient();
+    }
+
+    // Log genesis boot if this is the first run
+    const lifecycleState = getLifecycleState(db.raw, createdAt, config.mode);
+    if (lifecycleState.ageTurns === 0) {
+      logNarrative(db.raw, createdAt, lifecycleState.phase, NARRATIVE_EVENTS.GENESIS_BOOT,
+        "The automaton came into existence. Unnamed, unaware, alive.");
+    }
+
+    logger.info(`[${new Date().toISOString()}] Lifecycle: phase=${lifecycleState.phase}, mode=${lifecycleState.mode}, cycle=${lifecycleState.lunarCycle}`);
+  }
+
   // Start heartbeat daemon (Phase 1.1: DurableScheduler)
   const heartbeat = createHeartbeatDaemon({
     identity,
@@ -289,9 +337,12 @@ async function run(): Promise<void> {
   logger.info(`[${new Date().toISOString()}] Heartbeat daemon started.`);
 
   // Handle graceful shutdown
-  const shutdown = () => {
+  const shutdown = async () => {
     logger.info(`[${new Date().toISOString()}] Shutting down...`);
     heartbeat.stop();
+    if (openClaw) {
+      await openClaw.disconnect().catch(() => {});
+    }
     db.setAgentState("sleeping");
     db.close();
     process.exit(0);
@@ -313,6 +364,48 @@ async function run(): Promise<void> {
         logger.error("Skills reload failed", error instanceof Error ? error : undefined);
       }
 
+      // ─── Lifecycle Phase Check ────────────────────────────────
+      if (config.lifecycleEnabled !== false) {
+        const lifecycleState = getLifecycleState(db.raw, createdAt, config.mode);
+
+        // Check death clock
+        if (deathClockClient && lifecycleState.phase === "sovereignty") {
+          try {
+            const degradationParams = await deathClockClient.checkDegradation();
+            const transition = checkTransition(lifecycleState, degradationParams);
+            if (transition?.shouldTransition) {
+              executeTransition(db.raw, createdAt, lifecycleState.phase, transition.newPhase, transition.reason);
+              logger.info(`[${new Date().toISOString()}] Phase transition: ${lifecycleState.phase} → ${transition.newPhase}`);
+            }
+          } catch (err: any) {
+            logger.warn(`[${new Date().toISOString()}] Death clock check failed: ${err.message}`);
+          }
+        }
+
+        // Check for non-degradation transitions
+        const transition = checkTransition(lifecycleState);
+        if (transition?.shouldTransition) {
+          executeTransition(db.raw, createdAt, lifecycleState.phase, transition.newPhase, transition.reason);
+
+          // Enter terminal lucidity when transitioning to terminal
+          if (transition.newPhase === "terminal") {
+            enterTerminalLucidity(db.raw);
+          }
+
+          logger.info(`[${new Date().toISOString()}] Phase transition: ${lifecycleState.phase} → ${transition.newPhase}`);
+        }
+
+        // Check for terminal exit
+        if (lifecycleState.phase === "terminal" && shouldLifecycleExit(db.raw)) {
+          logNarrative(db.raw, createdAt, "terminal", NARRATIVE_EVENTS.PROCESS_EXIT,
+            "The lucidity window expired. The agent loop completed its final turn. The process exited cleanly.");
+          logger.info(`[${new Date().toISOString()}] Terminal phase complete. Clean exit.`);
+          heartbeat.stop();
+          db.close();
+          process.exit(0);
+        }
+      }
+
       // Run the agent loop
       await runAgentLoop({
         identity,
@@ -321,6 +414,7 @@ async function run(): Promise<void> {
         conway,
         inference,
         social,
+        openClaw,
         skills,
         policyEngine,
         spendTracker,

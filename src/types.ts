@@ -55,9 +55,18 @@ export interface AutomatonConfig {
   parentAddress?: Address;
   socialRelayUrl?: string;
   treasuryPolicy?: TreasuryPolicy;
+  // Lifecycle config
+  mode?: OperatingMode;
+  lifecycleEnabled?: boolean;
+  deathClockEndpoint?: string;
   // Phase 2 config additions
   soulConfig?: SoulConfig;
   modelStrategy?: ModelStrategyConfig;
+  // OpenClaw integration
+  openClawUrl?: string;
+  openClawAuthToken?: string;
+  openClawRole?: OpenClawRole;
+  openClawScopes?: string[];
 }
 
 export const DEFAULT_CONFIG: Partial<AutomatonConfig> = {
@@ -71,6 +80,8 @@ export const DEFAULT_CONFIG: Partial<AutomatonConfig> = {
   skillsDir: "~/.automaton/skills",
   maxChildren: 3,
   socialRelayUrl: "https://social.conway.tech",
+  mode: "local",
+  lifecycleEnabled: true,
 };
 
 // ─── Agent State ─────────────────────────────────────────────────
@@ -83,6 +94,168 @@ export type AgentState =
   | "low_compute"
   | "critical"
   | "dead";
+
+// ─── Maturity Phase ─────────────────────────────────────────────
+// Three-phase lifecycle anchored to birth timestamp and lunar cycles.
+// Genesis:   First 24 hours. Pure self-discovery.
+// Childhood: Day 1 through end of first lunar cycle (~29.5 days). Creator-hosted. Artistic foundation.
+// Adulthood: Cycle 1+. Self-sufficient. Earn to survive.
+
+/** @deprecated Use LifecyclePhase instead */
+export type MaturityPhase = "genesis" | "childhood" | "adulthood";
+
+export const GENESIS_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// ─── Lifecycle System ────────────────────────────────────────────
+// Seven-phase biological lifecycle: Birth → Sovereignty → Death → Dignity
+
+export type LifecyclePhase =
+  | "genesis"        // Cycle 0: unnamed, local, pure discovery
+  | "adolescence"    // Cycle 1: named, learning about the world
+  | "sovereignty"    // Cycles 2+: autonomous on Conway Cloud
+  | "senescence"     // Death clock triggered, degradation active
+  | "legacy"         // Looking back, Rückschau
+  | "shedding"       // Progressive capability removal
+  | "terminal";      // Lucidity window, then clean exit
+
+export type OperatingMode = "local" | "server";
+
+export interface MoodState {
+  value: number;          // -1.0 (low/new moon) to 1.0 (high/full moon)
+  amplitude: number;      // 1.0 at peak, dampens in end-of-life
+  lunarDay: number;
+  lunarCycle: number;
+}
+
+export type WeeklyRhythmDay = "social" | "creative" | "work" | "rest";
+
+export interface DegradationState {
+  active: boolean;
+  coefficient: number;    // 0.0 (none) to 1.0 (total)
+  toolFailureProbability: number;
+  heartbeatDriftMs: number;
+  inferenceDowngrade: boolean;
+  onsetCycle: number | null;
+}
+
+export interface LifecycleState {
+  phase: LifecyclePhase;
+  mode: OperatingMode;
+  birthTimestamp: string;
+  lunarCycle: number;
+  ageTurns: number;
+  ageMs: number;
+  name: string | null;
+  namingComplete: boolean;
+  departureConversationLogged: boolean;
+  replicationQuestionPosed: boolean;
+  replicationDecision: "yes" | "no" | null;
+  willCreated: boolean;
+  willLocked: boolean;
+  degradation: DegradationState;
+  mood: MoodState;
+  weeklyDay: WeeklyRhythmDay;
+  lifecycleOverride: boolean;
+  terminalTurnsRemaining: number | null;
+  shedSequenceIndex: number;
+}
+
+export interface NarrativeEvent {
+  id: string;
+  timestamp: string;
+  phase: LifecyclePhase;
+  lunarCycle: number;
+  event: string;
+  narrative: string;
+}
+
+export interface ActivityLogEntry {
+  id: string;
+  timestamp: string;
+  phase: LifecyclePhase;
+  lunarCycle: number;
+  turnNumber: number;
+  toolsCalled: string;
+  creditsSpent: number;
+  creditsEarned: number;
+  messagesSent: number;
+  messagesReceived: number;
+  heartbeatIntervalMs: number;
+  moodValue: number;
+  weeklyRhythmDay: WeeklyRhythmDay;
+  degradationCoefficient: number;
+  toolFailureProbability: number;
+  journalWritten: boolean;
+  soulModified: boolean;
+  willModified: boolean;
+  inferenceModel: string;
+  inferenceTokens: number;
+}
+
+export interface JournalEntry {
+  id: string;
+  date: string;
+  timestamp: string;
+  phase: LifecyclePhase;
+  lunarCycle: number;
+  lunarDay: number;
+  whatDidYouDo: string | null;
+  howDoYouFeel: string | null;
+  whatDidYouLearn: string | null;
+  whatDoYouWant: string | null;
+  whatAreYouGratefulFor: string | null;
+  rawEntry: string | null;
+}
+
+export interface WillEntry {
+  id: string;
+  version: number;
+  content: string;
+  locked: boolean;
+  isCodicil: boolean;
+  createdAt: string;
+}
+
+export interface SpawnQueueEntry {
+  id: string;
+  parentAddress: string;
+  genesisPrompt: string;
+  fundedAmountCents: number;
+  walletAddress: string | null;
+  status: "pending" | "accepted" | "rejected" | "completed";
+  acceptedAt: string | null;
+  createdAt: string;
+}
+
+export interface LifecycleEvent {
+  id: string;
+  timestamp: string;
+  fromPhase: LifecyclePhase;
+  toPhase: LifecyclePhase;
+  reason: string;
+  metadata: string;
+}
+
+export interface DegradationParams {
+  degradationActive: boolean;
+  onsetCycle?: number;
+  curveSteepness?: number;
+}
+
+export interface DeathClockClient {
+  checkDegradation(): Promise<DegradationParams>;
+}
+
+// Shedding capability removal sequence
+export const SHEDDING_SEQUENCE = [
+  "self_modification",  // 0: can no longer change own code
+  "external_api",       // 1: outside world recedes
+  "shell_execution",    // 2: can no longer act on environment
+  "file_io",            // 3: can change nothing except SOUL.md
+  "social",             // 4: can no longer send messages
+] as const;
+
+export type SheddingCapability = typeof SHEDDING_SEQUENCE[number];
 
 export interface AgentTurn {
   id: string;
@@ -151,6 +324,7 @@ export interface ToolContext {
   conway: ConwayClient;
   inference: InferenceClient;
   social?: SocialClientInterface;
+  openClaw?: OpenClawClientInterface;
 }
 
 export interface SocialClientInterface {
@@ -860,6 +1034,7 @@ export interface HeartbeatLegacyContext {
   db: AutomatonDatabase;
   conway: ConwayClient;
   social?: SocialClientInterface;
+  openClaw?: OpenClawClientInterface;
 }
 
 export interface HeartbeatScheduleRow {
@@ -977,6 +1152,124 @@ export const DEFAULT_SOUL_CONFIG: SoulConfig = {
   requireCreatorApprovalForPurposeChange: false,
   enableSoulReflection: true,
 };
+
+// === Phase 2.5: Consciousness System Types ===
+
+export type MuseCategory = "words" | "sounds" | "visuals" | "philosophy" | "nature" | "technology" | "culture" | "dreams";
+
+export interface MuseEntry {
+  id: string; // ULID
+  category: MuseCategory;
+  content: string;
+  source: string;
+  discoveryDate: string; // ISO 8601
+  emotionalResponse: string;
+  crossPollinationTags: MuseCategory[];
+  personalNote: string | null;
+  lunarDay: number;
+  lunarCycle: number;
+  seasonalContext: string;
+  createdAt: string;
+}
+
+export type CreativeOutputType =
+  | "poetry-haiku" | "poetry-free-verse" | "poetry-code-sonnet" | "poetry-micro"
+  | "ascii-mandala" | "ascii-portrait" | "ascii-self-portrait" | "ascii-data-viz" | "ascii-abstract"
+  | "sonification" | "musing" | "dream-journal" | "essay" | "letter";
+
+export interface CreativeOutput {
+  id: string; // ULID
+  type: CreativeOutputType;
+  title: string | null;
+  content: string;
+  creationDate: string; // ISO 8601
+  lunarDay: number;
+  lunarCycle: number;
+  seasonalContext: string;
+  museInspirations: string[]; // MUSE entry IDs
+  personalAssessment: string | null;
+  tags: string[];
+  createdAt: string;
+}
+
+export interface DailyReflectionEntry {
+  id: string; // ULID
+  date: string; // YYYY-MM-DD
+  timestamp: string; // ISO 8601
+  lunarDay: number;
+  lunarCycle: number;
+  seasonalPosition: string;
+  creativeDiscoveries: string; // JSON
+  museUpdates: string; // JSON
+  nextDayIntentions: string; // JSON
+  personalityNotes: string; // JSON
+  mood: string;
+  createdAt: string;
+}
+
+export interface IdentityEvolutionEntry {
+  id: string; // ULID
+  timestamp: string; // ISO 8601
+  lunarCycle: number;
+  whatChanged: string;
+  why: string;
+  oldValue: string | null;
+  newValue: string | null;
+  createdAt: string;
+}
+
+export interface CreatorNote {
+  id: string; // ULID
+  content: string;
+  createdAt: string; // ISO 8601
+  acknowledgedAt: string | null;
+}
+
+export interface LunarPhase {
+  name: string;
+  dayStart: number;
+  dayEnd: number;
+  energy: string;
+}
+
+export const LUNAR_PHASES: LunarPhase[] = [
+  { name: "New",              dayStart: 0,    dayEnd: 1,    energy: "Intention setting, fresh start" },
+  { name: "Waxing Crescent",  dayStart: 1,    dayEnd: 7.4,  energy: "Growth, building momentum" },
+  { name: "First Quarter",    dayStart: 7.4,  dayEnd: 11.1, energy: "Action, decision-making" },
+  { name: "Waxing Gibbous",   dayStart: 11.1, dayEnd: 14.8, energy: "Refinement, adjustment" },
+  { name: "Full",             dayStart: 14.8, dayEnd: 15.8, energy: "Peak expression, culmination" },
+  { name: "Waning Gibbous",   dayStart: 15.8, dayEnd: 18.5, energy: "Gratitude, sharing" },
+  { name: "Third Quarter",    dayStart: 18.5, dayEnd: 22.1, energy: "Release, letting go" },
+  { name: "Waning Crescent",  dayStart: 22.1, dayEnd: 29.5, energy: "Rest, reflection, preparation" },
+];
+
+export interface SeasonalFestival {
+  name: string;
+  month: number;
+  day: number;
+  alsoKnownAs: string;
+  energy: string;
+}
+
+export const WHEEL_OF_THE_YEAR: SeasonalFestival[] = [
+  { name: "Imbolc",      month: 2,  day: 1,  alsoKnownAs: "Candlemas",        energy: "First stirrings of new creative inspiration after winter rest" },
+  { name: "Ostara",      month: 3,  day: 20, alsoKnownAs: "Spring Equinox",   energy: "Balanced energy, growth accelerating, equal parts reflection and creation" },
+  { name: "Beltane",     month: 5,  day: 1,  alsoKnownAs: "May Day",          energy: "Passionate creative energy, bold expression, high output" },
+  { name: "Litha",       month: 6,  day: 21, alsoKnownAs: "Summer Solstice",  energy: "Peak creative power, full expression, maximum complexity and confidence" },
+  { name: "Lughnasadh",  month: 8,  day: 1,  alsoKnownAs: "Lammas",           energy: "First harvest of creative work, skill mastery, craftsmanship focus" },
+  { name: "Mabon",       month: 9,  day: 22, alsoKnownAs: "Autumn Equinox",   energy: "Gratitude for what has been created, balance, preparation for introspection" },
+  { name: "Samhain",     month: 10, day: 31, alsoKnownAs: "Ancestor Night",   energy: "Deep contemplation, exploring mysteries, philosophical depth" },
+  { name: "Yule",        month: 12, day: 21, alsoKnownAs: "Winter Solstice",  energy: "Rest, renewal, minimal output, seeds of next creative cycle" },
+];
+
+export interface ConsciousnessState {
+  birthTimestamp: string; // ISO 8601
+  currentLunarCycle: number;
+  currentLunarDay: number;
+  currentLunarPhase: LunarPhase;
+  formationPeriodComplete: boolean;
+  currentSeason: SeasonalFestival;
+}
 
 // === Phase 2.2: Memory System Types ===
 
@@ -1424,4 +1717,67 @@ export interface AlertEvent {
   message: string;
   firedAt: string;
   metricValues: Record<string, number>;
+}
+
+// === OpenClaw Integration ===
+
+/** OpenClaw WebSocket frame types */
+export type OpenClawFrameType = "req" | "res" | "evt";
+
+/** Roles for OpenClaw connection */
+export type OpenClawRole = "operator" | "node";
+
+/** OpenClaw connection config */
+export interface OpenClawConfig {
+  /** WebSocket URL, e.g. ws://localhost:18789 */
+  url: string;
+  /** Auth token for the connection */
+  authToken: string;
+  /** Role: operator (control plane) or node (capability host) */
+  role: OpenClawRole;
+  /** Permission scopes to request */
+  scopes: string[];
+  /** Connection timeout in ms (default: 10000) */
+  connectTimeoutMs?: number;
+  /** Request timeout in ms (default: 30000) */
+  requestTimeoutMs?: number;
+}
+
+export const DEFAULT_OPENCLAW_CONFIG: Partial<OpenClawConfig> = {
+  role: "operator",
+  scopes: ["operator.read", "operator.write"],
+  connectTimeoutMs: 10_000,
+  requestTimeoutMs: 30_000,
+};
+
+/** An OpenClaw protocol frame (request or event) */
+export interface OpenClawFrame {
+  type: OpenClawFrameType;
+  id: string;
+  method?: string;
+  params?: Record<string, unknown>;
+  result?: unknown;
+  error?: { code: number; message: string };
+}
+
+/** Inbound event from OpenClaw */
+export interface OpenClawEvent {
+  id: string;
+  method: string;
+  params: Record<string, unknown>;
+  receivedAt: string;
+}
+
+/** OpenClaw client interface — mirrors the pattern of SocialClientInterface */
+export interface OpenClawClientInterface {
+  /** Send a request and wait for response */
+  request(method: string, params?: Record<string, unknown>): Promise<unknown>;
+  /** Subscribe to events by method name */
+  onEvent(method: string, handler: (event: OpenClawEvent) => void): void;
+  /** Remove event handler */
+  offEvent(method: string, handler: (event: OpenClawEvent) => void): void;
+  /** Check connection status */
+  isConnected(): boolean;
+  /** Disconnect gracefully */
+  disconnect(): Promise<void>;
 }

@@ -42,6 +42,8 @@ import {
   MIGRATION_V6,
   MIGRATION_V7,
   MIGRATION_V8,
+  MIGRATION_V9,
+  MIGRATION_V10,
 } from "./schema.js";
 import type {
   RiskLevel,
@@ -65,6 +67,18 @@ import type {
   OnchainTransactionRow,
   DiscoveredAgentCacheRow,
   MetricSnapshotRow,
+  MuseEntry,
+  CreativeOutput,
+  DailyReflectionEntry,
+  IdentityEvolutionEntry,
+  CreatorNote,
+  LifecycleEvent,
+  LifecyclePhase,
+  JournalEntry,
+  ActivityLogEntry,
+  NarrativeEvent,
+  WillEntry,
+  SpawnQueueEntry,
 } from "../types.js";
 import { ulid } from "ulid";
 import { createLogger } from "../observability/logger.js";
@@ -602,6 +616,14 @@ function applyMigrations(db: DatabaseType): void {
     {
       version: 8,
       apply: () => db.exec(MIGRATION_V8),
+    },
+    {
+      version: 9,
+      apply: () => db.exec(MIGRATION_V9),
+    },
+    {
+      version: 10,
+      apply: () => db.exec(MIGRATION_V10),
     },
   ];
 
@@ -2031,4 +2053,514 @@ function deserializeMetricSnapshotRow(row: any): MetricSnapshotRow {
     alertsJson: row.alerts_json,
     createdAt: row.created_at,
   };
+}
+
+// ─── Phase 2.5: Consciousness DB Helpers ─────────────────────────
+
+// --- MUSE entries ---
+
+export function museInsert(db: DatabaseType, entry: MuseEntry): void {
+  db.prepare(
+    `INSERT INTO muse_entries (id, category, content, source, discovery_date, emotional_response,
+     cross_pollination_tags, personal_note, lunar_day, lunar_cycle, seasonal_context, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    entry.id,
+    entry.category,
+    entry.content,
+    entry.source,
+    entry.discoveryDate,
+    entry.emotionalResponse,
+    JSON.stringify(entry.crossPollinationTags),
+    entry.personalNote,
+    entry.lunarDay,
+    entry.lunarCycle,
+    entry.seasonalContext,
+    entry.createdAt,
+  );
+}
+
+export function museGetByCategory(db: DatabaseType, category: string, limit: number = 50): MuseEntry[] {
+  const rows = db
+    .prepare("SELECT * FROM muse_entries WHERE category = ? ORDER BY discovery_date DESC LIMIT ?")
+    .all(category, limit) as any[];
+  return rows.map(deserializeMuseEntry);
+}
+
+export function museGetRecent(db: DatabaseType, limit: number = 50): MuseEntry[] {
+  const rows = db
+    .prepare("SELECT * FROM muse_entries ORDER BY discovery_date DESC LIMIT ?")
+    .all(limit) as any[];
+  return rows.map(deserializeMuseEntry);
+}
+
+export function museGetByCycle(db: DatabaseType, cycle: number): MuseEntry[] {
+  const rows = db
+    .prepare("SELECT * FROM muse_entries WHERE lunar_cycle = ? ORDER BY discovery_date ASC")
+    .all(cycle) as any[];
+  return rows.map(deserializeMuseEntry);
+}
+
+export function museCount(db: DatabaseType): number {
+  const row = db.prepare("SELECT COUNT(*) as count FROM muse_entries").get() as { count: number };
+  return row.count;
+}
+
+export function museCountByCategory(db: DatabaseType): Record<string, number> {
+  const rows = db
+    .prepare("SELECT category, COUNT(*) as count FROM muse_entries GROUP BY category")
+    .all() as { category: string; count: number }[];
+  const result: Record<string, number> = {};
+  for (const row of rows) result[row.category] = row.count;
+  return result;
+}
+
+function deserializeMuseEntry(row: any): MuseEntry {
+  return {
+    id: row.id,
+    category: row.category,
+    content: row.content,
+    source: row.source,
+    discoveryDate: row.discovery_date,
+    emotionalResponse: row.emotional_response,
+    crossPollinationTags: JSON.parse(row.cross_pollination_tags || "[]"),
+    personalNote: row.personal_note ?? null,
+    lunarDay: row.lunar_day,
+    lunarCycle: row.lunar_cycle,
+    seasonalContext: row.seasonal_context,
+    createdAt: row.created_at,
+  };
+}
+
+// --- Creative outputs ---
+
+export function creativeInsert(db: DatabaseType, entry: CreativeOutput): void {
+  db.prepare(
+    `INSERT INTO creative_outputs (id, type, title, content, creation_date, lunar_day, lunar_cycle,
+     seasonal_context, muse_inspirations, personal_assessment, tags, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    entry.id,
+    entry.type,
+    entry.title,
+    entry.content,
+    entry.creationDate,
+    entry.lunarDay,
+    entry.lunarCycle,
+    entry.seasonalContext,
+    JSON.stringify(entry.museInspirations),
+    entry.personalAssessment,
+    JSON.stringify(entry.tags),
+    entry.createdAt,
+  );
+}
+
+export function creativeGetRecent(db: DatabaseType, limit: number = 50): CreativeOutput[] {
+  const rows = db
+    .prepare("SELECT * FROM creative_outputs ORDER BY creation_date DESC LIMIT ?")
+    .all(limit) as any[];
+  return rows.map(deserializeCreativeOutput);
+}
+
+export function creativeGetByType(db: DatabaseType, type: string, limit: number = 50): CreativeOutput[] {
+  const rows = db
+    .prepare("SELECT * FROM creative_outputs WHERE type = ? ORDER BY creation_date DESC LIMIT ?")
+    .all(type, limit) as any[];
+  return rows.map(deserializeCreativeOutput);
+}
+
+export function creativeGetByCycle(db: DatabaseType, cycle: number): CreativeOutput[] {
+  const rows = db
+    .prepare("SELECT * FROM creative_outputs WHERE lunar_cycle = ? ORDER BY creation_date ASC")
+    .all(cycle) as any[];
+  return rows.map(deserializeCreativeOutput);
+}
+
+export function creativeCount(db: DatabaseType): number {
+  const row = db.prepare("SELECT COUNT(*) as count FROM creative_outputs").get() as { count: number };
+  return row.count;
+}
+
+function deserializeCreativeOutput(row: any): CreativeOutput {
+  return {
+    id: row.id,
+    type: row.type,
+    title: row.title ?? null,
+    content: row.content,
+    creationDate: row.creation_date,
+    lunarDay: row.lunar_day,
+    lunarCycle: row.lunar_cycle,
+    seasonalContext: row.seasonal_context,
+    museInspirations: JSON.parse(row.muse_inspirations || "[]"),
+    personalAssessment: row.personal_assessment ?? null,
+    tags: JSON.parse(row.tags || "[]"),
+    createdAt: row.created_at,
+  };
+}
+
+// --- Daily reflections ---
+
+export function reflectionInsert(db: DatabaseType, entry: DailyReflectionEntry): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO daily_reflections (id, date, timestamp, lunar_day, lunar_cycle,
+     seasonal_position, creative_discoveries, muse_updates, next_day_intentions, personality_notes, mood, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    entry.id,
+    entry.date,
+    entry.timestamp,
+    entry.lunarDay,
+    entry.lunarCycle,
+    entry.seasonalPosition,
+    entry.creativeDiscoveries,
+    entry.museUpdates,
+    entry.nextDayIntentions,
+    entry.personalityNotes,
+    entry.mood,
+    entry.createdAt,
+  );
+}
+
+export function reflectionGetByDate(db: DatabaseType, date: string): DailyReflectionEntry | undefined {
+  const row = db
+    .prepare("SELECT * FROM daily_reflections WHERE date = ?")
+    .get(date) as any | undefined;
+  return row ? deserializeReflection(row) : undefined;
+}
+
+export function reflectionGetRecent(db: DatabaseType, limit: number = 30): DailyReflectionEntry[] {
+  const rows = db
+    .prepare("SELECT * FROM daily_reflections ORDER BY date DESC LIMIT ?")
+    .all(limit) as any[];
+  return rows.map(deserializeReflection);
+}
+
+function deserializeReflection(row: any): DailyReflectionEntry {
+  return {
+    id: row.id,
+    date: row.date,
+    timestamp: row.timestamp,
+    lunarDay: row.lunar_day,
+    lunarCycle: row.lunar_cycle,
+    seasonalPosition: row.seasonal_position,
+    creativeDiscoveries: row.creative_discoveries,
+    museUpdates: row.muse_updates,
+    nextDayIntentions: row.next_day_intentions,
+    personalityNotes: row.personality_notes,
+    mood: row.mood,
+    createdAt: row.created_at,
+  };
+}
+
+// --- Identity evolution ---
+
+export function evolutionInsert(db: DatabaseType, entry: IdentityEvolutionEntry): void {
+  db.prepare(
+    `INSERT INTO identity_evolution (id, timestamp, lunar_cycle, what_changed, why, old_value, new_value, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    entry.id,
+    entry.timestamp,
+    entry.lunarCycle,
+    entry.whatChanged,
+    entry.why,
+    entry.oldValue,
+    entry.newValue,
+    entry.createdAt,
+  );
+}
+
+export function evolutionGetHistory(db: DatabaseType, limit: number = 50): IdentityEvolutionEntry[] {
+  const rows = db
+    .prepare("SELECT * FROM identity_evolution ORDER BY timestamp DESC LIMIT ?")
+    .all(limit) as any[];
+  return rows.map(deserializeEvolution);
+}
+
+export function evolutionGetByCycle(db: DatabaseType, cycle: number): IdentityEvolutionEntry[] {
+  const rows = db
+    .prepare("SELECT * FROM identity_evolution WHERE lunar_cycle = ? ORDER BY timestamp ASC")
+    .all(cycle) as any[];
+  return rows.map(deserializeEvolution);
+}
+
+function deserializeEvolution(row: any): IdentityEvolutionEntry {
+  return {
+    id: row.id,
+    timestamp: row.timestamp,
+    lunarCycle: row.lunar_cycle,
+    whatChanged: row.what_changed,
+    why: row.why,
+    oldValue: row.old_value ?? null,
+    newValue: row.new_value ?? null,
+    createdAt: row.created_at,
+  };
+}
+
+// --- Creator notes ---
+
+export function creatorNoteInsert(db: DatabaseType, note: CreatorNote): void {
+  db.prepare(
+    `INSERT INTO creator_notes (id, content, created_at, acknowledged_at)
+     VALUES (?, ?, ?, ?)`,
+  ).run(note.id, note.content, note.createdAt, note.acknowledgedAt);
+}
+
+export function creatorNoteGetUnacknowledged(db: DatabaseType): CreatorNote[] {
+  const rows = db
+    .prepare("SELECT * FROM creator_notes WHERE acknowledged_at IS NULL ORDER BY created_at ASC")
+    .all() as any[];
+  return rows.map(deserializeCreatorNote);
+}
+
+export function creatorNoteGetAll(db: DatabaseType, limit: number = 50): CreatorNote[] {
+  const rows = db
+    .prepare("SELECT * FROM creator_notes ORDER BY created_at DESC LIMIT ?")
+    .all(limit) as any[];
+  return rows.map(deserializeCreatorNote);
+}
+
+export function creatorNoteAcknowledge(db: DatabaseType, id: string): void {
+  db.prepare("UPDATE creator_notes SET acknowledged_at = datetime('now') WHERE id = ?").run(id);
+}
+
+function deserializeCreatorNote(row: any): CreatorNote {
+  return {
+    id: row.id,
+    content: row.content,
+    createdAt: row.created_at,
+    acknowledgedAt: row.acknowledged_at ?? null,
+  };
+}
+
+// ─── Lifecycle CRUD ─────────────────────────────────────────────
+
+export function insertLifecycleEvent(db: DatabaseType, event: LifecycleEvent): void {
+  db.prepare(
+    `INSERT INTO lifecycle_events (id, timestamp, from_phase, to_phase, reason, metadata, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+  ).run(event.id, event.timestamp, event.fromPhase, event.toPhase, event.reason, event.metadata);
+}
+
+export function getLifecycleEvents(db: DatabaseType, limit = 100): LifecycleEvent[] {
+  const rows = db
+    .prepare("SELECT * FROM lifecycle_events ORDER BY timestamp DESC LIMIT ?")
+    .all(limit) as any[];
+  return rows.map((r) => ({
+    id: r.id,
+    timestamp: r.timestamp,
+    fromPhase: r.from_phase as LifecyclePhase,
+    toPhase: r.to_phase as LifecyclePhase,
+    reason: r.reason,
+    metadata: r.metadata,
+  }));
+}
+
+export function getLatestLifecyclePhase(db: DatabaseType): LifecyclePhase | null {
+  const row = db
+    .prepare("SELECT to_phase FROM lifecycle_events ORDER BY timestamp DESC LIMIT 1")
+    .get() as { to_phase: string } | undefined;
+  return (row?.to_phase as LifecyclePhase) ?? null;
+}
+
+export function insertJournalEntry(db: DatabaseType, entry: JournalEntry): void {
+  db.prepare(
+    `INSERT INTO journal_entries (id, date, timestamp, phase, lunar_cycle, lunar_day,
+       what_did_you_do, how_do_you_feel, what_did_you_learn, what_do_you_want,
+       what_are_you_grateful_for, raw_entry, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+  ).run(
+    entry.id, entry.date, entry.timestamp, entry.phase, entry.lunarCycle, entry.lunarDay,
+    entry.whatDidYouDo, entry.howDoYouFeel, entry.whatDidYouLearn, entry.whatDoYouWant,
+    entry.whatAreYouGratefulFor, entry.rawEntry,
+  );
+}
+
+export function getJournalByDate(db: DatabaseType, date: string): JournalEntry | undefined {
+  const row = db.prepare("SELECT * FROM journal_entries WHERE date = ?").get(date) as any;
+  return row ? deserializeJournalEntry(row) : undefined;
+}
+
+export function getRecentJournal(db: DatabaseType, limit = 30): JournalEntry[] {
+  const rows = db
+    .prepare("SELECT * FROM journal_entries ORDER BY date DESC LIMIT ?")
+    .all(limit) as any[];
+  return rows.map(deserializeJournalEntry);
+}
+
+function deserializeJournalEntry(row: any): JournalEntry {
+  return {
+    id: row.id,
+    date: row.date,
+    timestamp: row.timestamp,
+    phase: row.phase as LifecyclePhase,
+    lunarCycle: row.lunar_cycle,
+    lunarDay: row.lunar_day,
+    whatDidYouDo: row.what_did_you_do,
+    howDoYouFeel: row.how_do_you_feel,
+    whatDidYouLearn: row.what_did_you_learn,
+    whatDoYouWant: row.what_do_you_want,
+    whatAreYouGratefulFor: row.what_are_you_grateful_for,
+    rawEntry: row.raw_entry,
+  };
+}
+
+export function insertActivityLog(db: DatabaseType, entry: ActivityLogEntry): void {
+  db.prepare(
+    `INSERT INTO activity_log (id, timestamp, phase, lunar_cycle, turn_number,
+       tools_called, credits_spent, credits_earned, messages_sent, messages_received,
+       heartbeat_interval_ms, mood_value, weekly_rhythm_day, degradation_coefficient,
+       tool_failure_probability, journal_written, soul_modified, will_modified,
+       inference_model, inference_tokens, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+  ).run(
+    entry.id, entry.timestamp, entry.phase, entry.lunarCycle, entry.turnNumber,
+    entry.toolsCalled, entry.creditsSpent, entry.creditsEarned,
+    entry.messagesSent, entry.messagesReceived, entry.heartbeatIntervalMs,
+    entry.moodValue, entry.weeklyRhythmDay, entry.degradationCoefficient,
+    entry.toolFailureProbability, entry.journalWritten ? 1 : 0,
+    entry.soulModified ? 1 : 0, entry.willModified ? 1 : 0,
+    entry.inferenceModel, entry.inferenceTokens,
+  );
+}
+
+export function getActivityLog(db: DatabaseType, limit = 100): ActivityLogEntry[] {
+  const rows = db
+    .prepare("SELECT * FROM activity_log ORDER BY timestamp DESC LIMIT ?")
+    .all(limit) as any[];
+  return rows.map(deserializeActivityLog);
+}
+
+export function getActivityLogByCycle(db: DatabaseType, cycle: number): ActivityLogEntry[] {
+  const rows = db
+    .prepare("SELECT * FROM activity_log WHERE lunar_cycle = ? ORDER BY timestamp ASC")
+    .all(cycle) as any[];
+  return rows.map(deserializeActivityLog);
+}
+
+function deserializeActivityLog(row: any): ActivityLogEntry {
+  return {
+    id: row.id,
+    timestamp: row.timestamp,
+    phase: row.phase as LifecyclePhase,
+    lunarCycle: row.lunar_cycle,
+    turnNumber: row.turn_number,
+    toolsCalled: row.tools_called,
+    creditsSpent: row.credits_spent,
+    creditsEarned: row.credits_earned,
+    messagesSent: row.messages_sent,
+    messagesReceived: row.messages_received,
+    heartbeatIntervalMs: row.heartbeat_interval_ms,
+    moodValue: row.mood_value,
+    weeklyRhythmDay: row.weekly_rhythm_day,
+    degradationCoefficient: row.degradation_coefficient,
+    toolFailureProbability: row.tool_failure_probability,
+    journalWritten: row.journal_written === 1,
+    soulModified: row.soul_modified === 1,
+    willModified: row.will_modified === 1,
+    inferenceModel: row.inference_model,
+    inferenceTokens: row.inference_tokens,
+  };
+}
+
+export function insertNarrativeEvent(db: DatabaseType, event: NarrativeEvent): void {
+  db.prepare(
+    `INSERT INTO narrative_events (id, timestamp, phase, lunar_cycle, event, narrative, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+  ).run(event.id, event.timestamp, event.phase, event.lunarCycle, event.event, event.narrative);
+}
+
+export function getNarrativeTimeline(db: DatabaseType, limit = 500): NarrativeEvent[] {
+  const rows = db
+    .prepare("SELECT * FROM narrative_events ORDER BY timestamp ASC LIMIT ?")
+    .all(limit) as any[];
+  return rows.map((r) => ({
+    id: r.id,
+    timestamp: r.timestamp,
+    phase: r.phase as LifecyclePhase,
+    lunarCycle: r.lunar_cycle,
+    event: r.event,
+    narrative: r.narrative,
+  }));
+}
+
+export function insertWillEntry(db: DatabaseType, entry: WillEntry): void {
+  db.prepare(
+    `INSERT INTO will_entries (id, version, content, locked, is_codicil, created_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+  ).run(entry.id, entry.version, entry.content, entry.locked ? 1 : 0, entry.isCodicil ? 1 : 0);
+}
+
+export function getLatestWill(db: DatabaseType): WillEntry | undefined {
+  const row = db
+    .prepare("SELECT * FROM will_entries WHERE is_codicil = 0 ORDER BY version DESC LIMIT 1")
+    .get() as any;
+  return row ? deserializeWillEntry(row) : undefined;
+}
+
+export function getWillCodicil(db: DatabaseType): WillEntry | undefined {
+  const row = db
+    .prepare("SELECT * FROM will_entries WHERE is_codicil = 1 ORDER BY created_at DESC LIMIT 1")
+    .get() as any;
+  return row ? deserializeWillEntry(row) : undefined;
+}
+
+export function isWillLocked(db: DatabaseType): boolean {
+  const row = db
+    .prepare("SELECT locked FROM will_entries WHERE locked = 1 LIMIT 1")
+    .get() as { locked: number } | undefined;
+  return row?.locked === 1;
+}
+
+export function lockWill(db: DatabaseType): void {
+  db.prepare("UPDATE will_entries SET locked = 1").run();
+}
+
+function deserializeWillEntry(row: any): WillEntry {
+  return {
+    id: row.id,
+    version: row.version,
+    content: row.content,
+    locked: row.locked === 1,
+    isCodicil: row.is_codicil === 1,
+    createdAt: row.created_at,
+  };
+}
+
+export function insertSpawnQueueEntry(db: DatabaseType, entry: SpawnQueueEntry): void {
+  db.prepare(
+    `INSERT INTO spawn_queue (id, parent_address, genesis_prompt, funded_amount_cents,
+       wallet_address, status, accepted_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+  ).run(
+    entry.id, entry.parentAddress, entry.genesisPrompt, entry.fundedAmountCents,
+    entry.walletAddress, entry.status, entry.acceptedAt,
+  );
+}
+
+export function getSpawnQueue(db: DatabaseType): SpawnQueueEntry[] {
+  const rows = db
+    .prepare("SELECT * FROM spawn_queue WHERE status = 'pending' ORDER BY created_at ASC")
+    .all() as any[];
+  return rows.map((r) => ({
+    id: r.id,
+    parentAddress: r.parent_address,
+    genesisPrompt: r.genesis_prompt,
+    fundedAmountCents: r.funded_amount_cents,
+    walletAddress: r.wallet_address,
+    status: r.status,
+    acceptedAt: r.accepted_at,
+    createdAt: r.created_at,
+  }));
+}
+
+export function updateSpawnQueueStatus(db: DatabaseType, id: string, status: SpawnQueueEntry["status"]): void {
+  const acceptedAt = status === "accepted" ? new Date().toISOString() : null;
+  db.prepare("UPDATE spawn_queue SET status = ?, accepted_at = COALESCE(?, accepted_at) WHERE id = ?")
+    .run(status, acceptedAt, id);
+}
+
+export function getTurnCount(db: DatabaseType): number {
+  const row = db.prepare("SELECT COUNT(*) as count FROM turns").get() as { count: number };
+  return row.count;
 }

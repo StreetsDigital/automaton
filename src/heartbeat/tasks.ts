@@ -21,6 +21,10 @@ import { createLogger } from "../observability/logger.js";
 import { getMetrics } from "../observability/metrics.js";
 import { AlertEngine, createDefaultAlertRules } from "../observability/alerts.js";
 import { metricsInsertSnapshot, metricsPruneOld } from "../state/database.js";
+import { runConsciousnessCheck } from "../consciousness/index.js";
+import { hasReflectedToday } from "../consciousness/daily-reflection.js";
+import { isAtCycleBoundary } from "../consciousness/lunar.js";
+import { isFestivalDay } from "../consciousness/seasonal.js";
 import { ulid } from "ulid";
 
 const logger = createLogger("heartbeat.tasks");
@@ -431,6 +435,56 @@ export const BUILTIN_TASKS: Record<string, HeartbeatTaskFn> = {
       };
     } catch (error) {
       logger.error("report_metrics failed", error instanceof Error ? error : undefined);
+      return { shouldWake: false };
+    }
+  },
+
+  /**
+   * Consciousness check — runs periodically to sync creator notes,
+   * check for cycle boundaries, and remind about daily reflection.
+   */
+  consciousness_check: async (ctx: TickContext, taskCtx: HeartbeatLegacyContext) => {
+    try {
+      const birthTimestamp = taskCtx.db.getKV("born_at") || taskCtx.db.getIdentity("born_at");
+      if (!birthTimestamp) {
+        return { shouldWake: false, message: "No birth timestamp — consciousness inactive" };
+      }
+
+      const check = runConsciousnessCheck(taskCtx.db.raw, birthTimestamp);
+      const reasons: string[] = [];
+
+      // Wake if there are unacknowledged creator notes
+      if (check.creatorNotes.unacknowledged > 0) {
+        reasons.push(`${check.creatorNotes.unacknowledged} unread creator note(s)`);
+      }
+
+      // Wake if it's a cycle boundary (evolution checkpoint)
+      if (isAtCycleBoundary(birthTimestamp)) {
+        reasons.push(`Lunar cycle boundary — evolution checkpoint`);
+      }
+
+      // Wake if it's a festival day
+      const festival = isFestivalDay();
+      if (festival) {
+        reasons.push(`Festival day: ${festival.name} (${festival.alsoKnownAs})`);
+      }
+
+      // Remind about daily reflection (after 21:00 GMT)
+      const hour = new Date().getUTCHours();
+      if (hour >= 21 && !hasReflectedToday(taskCtx.db.raw)) {
+        reasons.push("Daily reflection not yet completed");
+      }
+
+      const shouldWake = reasons.length > 0;
+      const message = shouldWake ? reasons.join("; ") : "Consciousness nominal";
+
+      if (shouldWake) {
+        logger.info(`Consciousness check: ${message}`);
+      }
+
+      return { shouldWake, message };
+    } catch (error) {
+      logger.error("consciousness_check failed", error instanceof Error ? error : undefined);
       return { shouldWake: false };
     }
   },
