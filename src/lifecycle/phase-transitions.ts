@@ -128,7 +128,9 @@ function checkAdolescenceTransition(state: LifecycleState): TransitionResult | n
 
 /**
  * Sovereignty → Senescence:
- * Death clock endpoint returns degradation_active: true
+ * Sealed death clock hash comparison matches today's date.
+ * No external endpoint — the check is a daily one-way hash comparison
+ * against cryptographic values sealed at Genesis. No human decides when.
  */
 function checkSovereigntyTransition(
   state: LifecycleState,

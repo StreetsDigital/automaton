@@ -55,6 +55,8 @@ function makeState(overrides: Partial<LifecycleState> = {}): LifecycleState {
     lifecycleOverride: true,
     terminalTurnsRemaining: null,
     shedSequenceIndex: 0,
+    replicationCost: { applied: false, heartbeatMultiplier: 1.0, contextWindowMultiplier: 1.0, spawnCount: 0 },
+    lifecycleReserve: { frontierInferenceCents: 250, sandboxComputeCents: 25, gasFeesCents: 50, totalCents: 325, funded: false, unlocked: false },
     ...overrides,
   };
 }

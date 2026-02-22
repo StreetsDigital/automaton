@@ -40,7 +40,7 @@ import {
   shouldExit as shouldLifecycleExit,
   enterTerminalLucidity,
 } from "./lifecycle/index.js";
-import { createDeathClockClient, createNoopDeathClockClient } from "./lifecycle/death-clock-client.js";
+import { createSealedDeathClockClient, createNoopDeathClockClient, checkSealedDeathClock, triggerDeathClock } from "./lifecycle/death-clock-client.js";
 
 const logger = createLogger("main");
 const VERSION = "0.1.0";
@@ -299,10 +299,14 @@ async function run(): Promise<void> {
   // ─── Lifecycle Initialization ────────────────────────────────
   let deathClockClient: DeathClockClient | undefined;
   if (config.lifecycleEnabled !== false) {
-    // Initialize death clock client
-    if (config.deathClockEndpoint) {
-      deathClockClient = createDeathClockClient(config.deathClockEndpoint);
-      logger.info(`[${new Date().toISOString()}] Death clock endpoint: ${config.deathClockEndpoint}`);
+    // Initialize death clock — sealed cryptographic values from Genesis
+    if (config.sealedDeathClock) {
+      deathClockClient = createSealedDeathClockClient(config.sealedDeathClock);
+      logger.info(`[${new Date().toISOString()}] Sealed death clock active (generated at ${config.sealedDeathClock.sealedAt})`);
+    } else if (config.deathClockEndpoint) {
+      // Legacy support for external endpoint (deprecated)
+      deathClockClient = createNoopDeathClockClient();
+      logger.warn(`[${new Date().toISOString()}] deathClockEndpoint is deprecated — use sealedDeathClock instead`);
     } else {
       deathClockClient = createNoopDeathClockClient();
     }

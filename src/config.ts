@@ -6,7 +6,7 @@
 
 import fs from "fs";
 import path from "path";
-import type { AutomatonConfig, TreasuryPolicy, ModelStrategyConfig, SoulConfig, OperatingMode } from "./types.js";
+import type { AutomatonConfig, TreasuryPolicy, ModelStrategyConfig, SoulConfig, OperatingMode, SealedDeathClock } from "./types.js";
 import type { Address } from "viem";
 import { DEFAULT_CONFIG, DEFAULT_TREASURY_POLICY, DEFAULT_MODEL_STRATEGY_CONFIG, DEFAULT_SOUL_CONFIG } from "./types.js";
 import { getAutomatonDir } from "./identity/wallet.js";
@@ -124,7 +124,9 @@ export function createConfig(params: {
   treasuryPolicy?: TreasuryPolicy;
   mode?: OperatingMode;
   lifecycleEnabled?: boolean;
+  /** @deprecated Use sealedDeathClock instead. */
   deathClockEndpoint?: string;
+  sealedDeathClock?: SealedDeathClock;
 }): AutomatonConfig {
   return {
     name: params.name,
@@ -153,5 +155,6 @@ export function createConfig(params: {
     mode: params.mode ?? "local",
     lifecycleEnabled: params.lifecycleEnabled ?? true,
     deathClockEndpoint: params.deathClockEndpoint,
+    sealedDeathClock: params.sealedDeathClock,
   };
 }

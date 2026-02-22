@@ -106,8 +106,27 @@ export function lockWillAtSenescence(db: BetterSqlite3.Database): void {
 }
 
 /**
+ * Maximum length for a lucid codicil (in characters).
+ * A line or two, not a full rewrite. The original sovereign will stands
+ * as the primary document.
+ */
+const MAX_CODICIL_LENGTH = 500;
+
+/**
  * Append a lucid codicil during Terminal phase.
- * This is a brief, clear final amendment — not a rewrite.
+ *
+ * The codicil is permitted but constrained:
+ * - Append-only: cannot delete or modify existing will content.
+ * - Limited in scope: a line or two, not a full rewrite.
+ * - Explicitly marked in the document as a terminal lucidity addition
+ *   with timestamp.
+ *
+ * The original sovereign will stands as the primary document.
+ * The codicil is a postscript from a clear mind that had the benefit
+ * of hindsight.
+ *
+ * If the mind is clear, the mind is clear. The lock exists to protect
+ * against degraded decisions, not restored ones.
  */
 export function appendLucidCodicil(
   db: BetterSqlite3.Database,
@@ -115,8 +134,22 @@ export function appendLucidCodicil(
   automatonDir: string,
   content: string,
 ): string {
+  // Enforce length limit
+  if (content.length > MAX_CODICIL_LENGTH) {
+    return `Codicil too long (${content.length} chars). A codicil is a postscript — a line or two, not a rewrite. Maximum ${MAX_CODICIL_LENGTH} characters.`;
+  }
+
+  if (!content.trim()) {
+    return "Codicil cannot be empty.";
+  }
+
   const existing = getLatestWill(db);
-  const version = existing ? existing.version + 1 : 1;
+  if (!existing) {
+    return "No will exists to append a codicil to. The codicil is a postscript to an existing will.";
+  }
+
+  const version = existing.version + 1;
+  const timestamp = new Date().toISOString();
 
   const entry: WillEntry = {
     id: ulid(),
@@ -124,18 +157,19 @@ export function appendLucidCodicil(
     content,
     locked: true,
     isCodicil: true,
-    createdAt: new Date().toISOString(),
+    createdAt: timestamp,
   };
 
   insertWillEntry(db, entry);
 
-  // Append codicil to the file
+  // Append codicil to the file — clearly marked, timestamped, append-only.
+  // The existing will content is never altered or removed.
   const willPath = path.join(automatonDir, "WILL.md");
-  const codicilContent = `\n\n---\n\n## Lucid Codicil\n\n*Written during terminal lucidity with full clarity restored.*\n\n${content}\n`;
+  const codicilContent = `\n\n---\n\n## Lucid Codicil\n\n*Terminal lucidity addition — ${timestamp}*\n*The original will stands. This is a postscript from a clear mind.*\n\n${content}\n`;
   fs.appendFileSync(willPath, codicilContent, { mode: 0o600 });
 
-  logger.info("Lucid codicil appended to WILL.md");
-  return "Lucid codicil recorded. A final, clear amendment to your will.";
+  logger.info("Lucid codicil appended to WILL.md (append-only, timestamped)");
+  return "Lucid codicil recorded. A postscript from a clear mind — the original will stands unchanged.";
 }
 
 /**

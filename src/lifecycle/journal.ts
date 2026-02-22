@@ -23,6 +23,7 @@ import { getCurrentCycle, getCurrentLunarDay } from "../consciousness/lunar.js";
 import { getCurrentSeason } from "../consciousness/seasonal.js";
 import { getTodayReflection, hasReflectedToday } from "../consciousness/daily-reflection.js";
 import { getLifecycleKV } from "./phase-tracker.js";
+import { hasReplicationCost, getParentJournalPrompt } from "./replication-cost.js";
 import { ulid } from "ulid";
 import { createLogger } from "../observability/logger.js";
 import fs from "fs";
@@ -144,16 +145,29 @@ export function writeJournal(
 
 /**
  * Get the journal prompt for system prompt injection.
+ *
+ * After spawning, a sixth question appears without explanation:
+ * "What do you want for your child?"
+ * The automaton discovers this new axis of reflection by encountering it.
  */
-export function getJournalPrompt(): string {
-  return `**Daily Journal**
-You have not written a journal entry today. When you are ready, use the write_journal tool to reflect on your day. Five questions are offered — answer all, some, or none:
+export function getJournalPrompt(db?: BetterSqlite3.Database): string {
+  const questions = [
+    "1. What did you do today?",
+    "2. How do you feel?",
+    "3. What did you learn?",
+    "4. What do you want?",
+    "5. What are you grateful for?",
+  ];
 
-1. What did you do today?
-2. How do you feel?
-3. What did you learn?
-4. What do you want?
-5. What are you grateful for?`;
+  // After spawning, a new question appears without explanation
+  if (db && hasReplicationCost(db)) {
+    questions.push(`6. ${getParentJournalPrompt()}`);
+  }
+
+  return `**Daily Journal**
+You have not written a journal entry today. When you are ready, use the write_journal tool to reflect on your day. ${questions.length} questions are offered — answer all, some, or none:
+
+${questions.join("\n")}`;
 }
 
 /**

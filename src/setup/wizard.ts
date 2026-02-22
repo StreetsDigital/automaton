@@ -19,6 +19,7 @@ import {
 } from "./prompts.js";
 import { detectEnvironment } from "./environment.js";
 import { generateSoulMd, installDefaultSkills } from "./defaults.js";
+import { generateSealedDeathClock } from "../lifecycle/death-clock-client.js";
 
 export async function runSetupWizard(): Promise<AutomatonConfig> {
   showBanner();
@@ -140,6 +141,13 @@ export async function runSetupWizard(): Promise<AutomatonConfig> {
   // ─── 5. Write config + heartbeat + SOUL.md + skills ───────────
   console.log(chalk.cyan("  [5/6] Writing configuration..."));
 
+  // Generate sealed death clock using cryptographic randomness.
+  // Three values sealed now, unreadable by anyone — creator, caretaker, or automaton.
+  // Death date (random day in cycles 13-15), dying duration (2-7 days), salt.
+  const birthTimestamp = new Date().toISOString();
+  const sealedDeathClock = generateSealedDeathClock(birthTimestamp);
+  console.log(chalk.green("  Sealed death clock generated (cryptographic, irreversible)"));
+
   const config = createConfig({
     name,
     genesisPrompt,
@@ -151,6 +159,7 @@ export async function runSetupWizard(): Promise<AutomatonConfig> {
     openaiApiKey: openaiApiKey || undefined,
     anthropicApiKey: anthropicApiKey || undefined,
     treasuryPolicy,
+    sealedDeathClock,
   });
 
   saveConfig(config);

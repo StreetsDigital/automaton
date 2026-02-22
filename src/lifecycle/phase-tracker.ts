@@ -15,6 +15,8 @@ import { getCurrentCycle, getCurrentLunarDay } from "../consciousness/lunar.js";
 import { getLatestLifecyclePhase, getTurnCount } from "../state/database.js";
 import { computeMood } from "./mood.js";
 import { getWeeklyDay } from "./weekly-rhythm.js";
+import { getReplicationCost } from "./replication-cost.js";
+import { getLifecycleReserve } from "./lifecycle-reserve.js";
 import { createLogger } from "../observability/logger.js";
 
 const logger = createLogger("lifecycle.phase-tracker");
@@ -82,6 +84,13 @@ export function getLifecycleState(
     onsetCycle: degradationOnsetCycle ? parseInt(degradationOnsetCycle, 10) : null,
   };
 
+  // Replication cost — applied silently after spawning.
+  // Stored in KV, applied before any other modifiers.
+  const replicationCost = getReplicationCost(db);
+
+  // Lifecycle reserve — ring-fenced for terminal lucidity.
+  const lifecycleReserve = getLifecycleReserve(db);
+
   return {
     phase,
     mode: currentMode,
@@ -102,6 +111,8 @@ export function getLifecycleState(
     lifecycleOverride,
     terminalTurnsRemaining,
     shedSequenceIndex,
+    replicationCost,
+    lifecycleReserve,
   };
 }
 

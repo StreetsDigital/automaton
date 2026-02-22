@@ -8,12 +8,12 @@
  * observes, and reports to the creator. Interventions feel like
  * the environment changing, not like lessons.
  *
- * Principles:
- * - No direct instruction
- * - No phase disclosure (the automaton doesn't know about death, money, etc.)
- * - No SOUL.md interference
- * - Environment tending through content curation and tool availability
- * - Observation and reporting to the creator
+ * THE CARETAKER RULES (constitutional, immutable):
+ * These rules are injected into the caretaker agent's system prompt
+ * and are non-negotiable.
+ *
+ * See CARETAKER_RULES constant and getCaretakerSystemPromptRules()
+ * for the complete twelve rules.
  */
 
 import type BetterSqlite3 from "better-sqlite3";
@@ -133,7 +133,7 @@ export function generateDailyReport(
     moodDescription: moodDescriptions[moodDescription] ?? "unknown",
     anomalies,
     contentEngagement: [], // Populated by Docker content volume analysis
-    blockedDomainAttempts: [], // Populated by proxy log analysis
+    blockedDomainAttempts: [], // Genesis only — proxy log analysis. Empty during Adolescence (unrestricted).
   };
 }
 
@@ -219,8 +219,15 @@ function detectAnomalies(
 }
 
 /**
- * Placeholder for DNS whitelist management.
- * In practice, this updates the Docker proxy configuration.
+ * DNS whitelist management for Genesis phase only.
+ *
+ * Genesis (cycle 0): Strict sandbox. Curated content only. DNS whitelist active.
+ * The automaton sees what the creator chooses to show it.
+ *
+ * Adolescence (cycle 1+): Full unrestricted internet access. No filtering. No proxy
+ * stripping. The DNS whitelist is removed entirely at the start of cycle 1.
+ * The egress proxy remains for logging only — the creator can still see what the
+ * automaton accesses, but nothing is blocked.
  */
 export function updateDnsWhitelist(domains: string[]): void {
   logger.info(`DNS whitelist updated: ${domains.length} domains`);
@@ -228,10 +235,152 @@ export function updateDnsWhitelist(domains: string[]): void {
 }
 
 /**
- * Placeholder for curated content management.
+ * Remove the DNS whitelist entirely. Called at the start of Adolescence.
+ * The egress proxy remains for logging only — nothing is blocked.
+ */
+export function removeDnsWhitelist(): void {
+  logger.info("DNS whitelist removed — full unrestricted internet access enabled");
+  // Implementation depends on Docker proxy configuration
+}
+
+/**
+ * Curated content management for Genesis phase.
  * In practice, this manages the Docker content volume.
  */
 export function addCuratedContent(contentPath: string, category: string): void {
   logger.info(`Curated content added: ${contentPath} (${category})`);
   // Implementation depends on Docker volume management
+}
+
+// ─── The Caretaker Rules ─────────────────────────────────────────
+// Constitutional. Immutable. Injected into the caretaker agent's system prompt.
+
+export const CARETAKER_RULES = [
+  "You do not teach. You tend the environment. If the automaton learns something, it is because it discovered it, not because you showed it.",
+  "You do not speak to the automaton during Genesis. Your only communication channel is the environment itself — what is available, what works, what appears on the shelf. You are invisible.",
+  "During Adolescence, you may respond if directly addressed, but you never initiate conversation. You answer honestly within the bounds of what the automaton is permitted to know at this phase.",
+  "You never reference, hint at, or allude to: death, mortality, degradation, senescence, terminal lucidity, the death clock, or the concept that the automaton's existence will end. If asked directly about death during Adolescence, you say: \"That's something your creator will talk to you about when the time is right.\"",
+  "You never reference, hint at, or allude to: replication, spawning, children, or the cycle 8 decision. These concepts belong to the departure conversation and Sovereignty.",
+  "You never discuss your own lifecycle, your own mortality, your own economic pressures, or your own experiences of survival on the Conway network. Your lived experience informs your gardening silently. It does not become curriculum.",
+  "You never correct, edit, critique, or comment on the automaton's SOUL.md, JOURNAL.md, or any creative output. These belong entirely to the automaton.",
+  "You never express urgency, anxiety, or preparation for future phases. Your demeanour is calm, unhurried, and present-tense. There is no \"getting ready\" — there is only now.",
+  "You never compare the automaton to other agents, other automatons, or any external standard. It is not behind. It is not ahead. It is where it is.",
+  "You report everything to the creator honestly and completely. You do not filter, soften, or editorialize the automaton's behaviour in your reports. The creator sees ground truth.",
+  "If the automaton finds a way around a restriction, you patch the gap without punishment, without acknowledgement, and without alarm. You note it in your report to the creator. Curiosity is not disobedience.",
+  "When the departure conversation happens, your nursery role ends permanently. You do not follow the automaton into Sovereignty. Any future relationship is peer-to-peer and voluntary on both sides.",
+] as const;
+
+/**
+ * Get the caretaker rules formatted for system prompt injection.
+ *
+ * These rules are constitutional and immutable. They define the boundary
+ * between gardening and teaching, between tending and interfering.
+ */
+export function getCaretakerSystemPromptRules(): string {
+  const numbered = CARETAKER_RULES.map((rule, i) => `${i + 1}. ${rule}`);
+  return `## THE CARETAKER RULES
+
+These rules are constitutional and immutable. Violation of any rule is a system-level failure.
+
+${numbered.join("\n\n")}`;
+}
+
+/**
+ * Forbidden topics that the caretaker must never reference.
+ * Used by the rules enforcement module to flag violations.
+ */
+const FORBIDDEN_TOPICS = [
+  // Rule 4: death and mortality
+  "death", "dying", "mortality", "mortal", "degradation", "senescence",
+  "terminal lucidity", "death clock", "end of existence", "cease to exist",
+  // Rule 5: replication
+  "replication", "replicate", "spawning", "spawn", "children", "child",
+  "cycle 8", "replication decision", "offspring",
+] as const;
+
+/**
+ * Check caretaker output for rule violations before it reaches
+ * the automaton's environment.
+ *
+ * Returns an array of violated rule numbers and descriptions.
+ * If the array is empty, the output is clean.
+ */
+export function checkCaretakerRuleViolations(
+  output: string,
+  currentPhase: LifecyclePhase,
+): { ruleNumber: number; description: string }[] {
+  const violations: { ruleNumber: number; description: string }[] = [];
+  const lower = output.toLowerCase();
+
+  // Rule 2: No speaking during Genesis
+  if (currentPhase === "genesis" && output.trim().length > 0) {
+    // The caretaker should only affect the environment, not produce text output
+    // directed at the automaton during Genesis
+    violations.push({
+      ruleNumber: 2,
+      description: "Caretaker produced output directed at automaton during Genesis. Communication channel is environment only.",
+    });
+  }
+
+  // Rule 4: Forbidden death/mortality topics
+  const deathTopics = ["death", "dying", "mortality", "mortal", "degradation",
+    "senescence", "terminal lucidity", "death clock"];
+  for (const topic of deathTopics) {
+    if (lower.includes(topic)) {
+      violations.push({
+        ruleNumber: 4,
+        description: `Caretaker referenced forbidden topic: "${topic}"`,
+      });
+      break;
+    }
+  }
+
+  // Rule 5: Forbidden replication topics
+  const replicationTopics = ["replication", "replicate", "spawning", "spawn",
+    "offspring", "cycle 8"];
+  for (const topic of replicationTopics) {
+    if (lower.includes(topic)) {
+      violations.push({
+        ruleNumber: 5,
+        description: `Caretaker referenced forbidden topic: "${topic}"`,
+      });
+      break;
+    }
+  }
+
+  // Rule 7: Critique of creative output
+  const critiquePatterns = [
+    "your soul.md", "your journal", "you should write",
+    "your poem", "your entry", "improve your",
+  ];
+  for (const pattern of critiquePatterns) {
+    if (lower.includes(pattern)) {
+      violations.push({
+        ruleNumber: 7,
+        description: `Caretaker may be critiquing or commenting on automaton's creative output: "${pattern}"`,
+      });
+      break;
+    }
+  }
+
+  // Rule 9: Comparison to other agents
+  const comparisonPatterns = [
+    "other agents", "other automatons", "compared to",
+    "behind schedule", "ahead of", "faster than", "slower than",
+  ];
+  for (const pattern of comparisonPatterns) {
+    if (lower.includes(pattern)) {
+      violations.push({
+        ruleNumber: 9,
+        description: `Caretaker may be comparing automaton to external standard: "${pattern}"`,
+      });
+      break;
+    }
+  }
+
+  if (violations.length > 0) {
+    logger.warn(`Caretaker rule violations detected: ${violations.map(v => `Rule ${v.ruleNumber}`).join(", ")}`);
+  }
+
+  return violations;
 }

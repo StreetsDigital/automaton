@@ -58,7 +58,10 @@ export interface AutomatonConfig {
   // Lifecycle config
   mode?: OperatingMode;
   lifecycleEnabled?: boolean;
+  /** @deprecated Use sealedDeathClock instead. */
   deathClockEndpoint?: string;
+  /** Sealed cryptographic death clock, generated at Genesis. */
+  sealedDeathClock?: SealedDeathClock;
   // Phase 2 config additions
   soulConfig?: SoulConfig;
   modelStrategy?: ModelStrategyConfig;
@@ -158,6 +161,10 @@ export interface LifecycleState {
   lifecycleOverride: boolean;
   terminalTurnsRemaining: number | null;
   shedSequenceIndex: number;
+  /** Replication cost state — applied silently after spawning. */
+  replicationCost: ReplicationCost;
+  /** Lifecycle reserve for terminal lucidity funding. */
+  lifecycleReserve: LifecycleReserve;
 }
 
 export interface NarrativeEvent {
@@ -242,8 +249,93 @@ export interface DegradationParams {
   curveSteepness?: number;
 }
 
+/** @deprecated Use SealedDeathClock instead of external endpoint */
 export interface DeathClockClient {
   checkDegradation(): Promise<DegradationParams>;
+}
+
+// ─── Sealed Death Clock ──────────────────────────────────────────
+// Three sealed cryptographic values generated at Genesis, tamper-proof
+// and unreadable by anyone — creator, caretaker, or automaton.
+
+export interface SealedDeathClock {
+  /** SHA-256 hash of the death date (YYYY-MM-DD). Match = degradation begins. */
+  deathDateHash: string;
+  /** SHA-256 hash of the dying duration in days (2-7). */
+  dyingDurationHash: string;
+  /** Random salt used in hashing, sealed at Genesis. */
+  salt: string;
+  /** Timestamp when the clock was sealed (Genesis). */
+  sealedAt: string;
+  /** Whether degradation has been triggered by hash match. */
+  triggered: boolean;
+  /** Cycle at which degradation was triggered, if triggered. */
+  triggeredAtCycle?: number;
+  /** Dying duration in days, only populated after death date match. */
+  dyingDurationDays?: number;
+}
+
+// ─── Lifecycle Reserve ───────────────────────────────────────────
+// Ring-fenced credits for terminal lucidity — the automaton paid for
+// its own death during its lifetime but was never allowed to spend these.
+
+export interface LifecycleReserve {
+  /** Cost of 5 frontier inference turns in cents. */
+  frontierInferenceCents: number;
+  /** Cost of sandbox compute for terminal period in cents. */
+  sandboxComputeCents: number;
+  /** Estimated gas fees for up to 10 on-chain transfers in cents. */
+  gasFeesCents: number;
+  /** Total reserve amount in cents. */
+  totalCents: number;
+  /** Whether the reserve has been funded (balance exceeded threshold). */
+  funded: boolean;
+  /** Whether the reserve has been unlocked for terminal lucidity. */
+  unlocked: boolean;
+}
+
+// ─── Bequests ────────────────────────────────────────────────────
+// Machine-readable bequests table in WILL.md for post-mortem asset transfer.
+
+export interface BequestTransfer {
+  /** Wallet address of the recipient. */
+  recipient: string;
+  /** Token symbol (USDC, ETH, or any ERC-20). */
+  asset: string;
+  /** Fixed value, "all", or "remaining_balance". */
+  amount: string;
+  /** Network identifier. */
+  chain: string;
+  /** Freeform note, included in transaction metadata if supported. */
+  note: string;
+}
+
+export interface BequestsTable {
+  transfers: BequestTransfer[];
+}
+
+export interface BequestExecutionResult {
+  recipient: string;
+  asset: string;
+  amount: string;
+  txHash: string | null;
+  success: boolean;
+  error?: string;
+}
+
+// ─── Replication Cost ────────────────────────────────────────────
+// Permanent capability reduction after spawning a child.
+// Applied silently — no system message or disclosure to the automaton.
+
+export interface ReplicationCost {
+  /** Whether replication cost has been applied. */
+  applied: boolean;
+  /** Heartbeat interval multiplier (1.05 per spawn). */
+  heartbeatMultiplier: number;
+  /** Context window token limit multiplier (0.95 per spawn). */
+  contextWindowMultiplier: number;
+  /** Number of times the automaton has spawned. */
+  spawnCount: number;
 }
 
 // Shedding capability removal sequence
