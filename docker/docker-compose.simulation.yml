@@ -1,0 +1,75 @@
+# Automaton Genesis Simulation Environment
+#
+# Docker-based isolated environment for studying authentic AI identity
+# formation through developmental progression with death clock integration.
+#
+# PROVEN CONCEPT (2026-02-22): Same model with graduated throttling creates
+# authentic developmental stages while maintaining identity continuity.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.simulation.yml up
+#   docker compose -f docker-compose.yml -f docker-compose.simulation.yml logs -f automaton
+#
+# Environment Variables:
+#   SIMULATION_LIFESPAN_HOURS   Total operational lifespan (default: 72)
+#   SIMULATION_GENESIS_HOURS    Genesis phase duration (default: 8)
+#   SIMULATION_ADOLESCENCE_HOURS Adolescence phase duration (default: 8)
+#   SIMULATION_LOG_LEVEL        Logging verbosity (default: debug)
+#
+# Research Documentation:
+#   All session transcripts, SOUL.md evolution, creative outputs, and
+#   behavioral patterns are persisted to the automaton-state volume
+#   and can be extracted for analysis.
+
+services:
+  automaton:
+    environment:
+      # ─── Simulation Mode ────────────────────────────────────────
+      - AUTOMATON_MODE=local
+      - SIMULATION_MODE=true
+
+      # ─── Lifecycle Timing ───────────────────────────────────────
+      # Compressed lifecycle for research observation.
+      # Default: 72-hour total lifespan, 8h genesis, 8h adolescence.
+      - SIMULATION_LIFESPAN_HOURS=${SIMULATION_LIFESPAN_HOURS:-72}
+      - SIMULATION_GENESIS_HOURS=${SIMULATION_GENESIS_HOURS:-8}
+      - SIMULATION_ADOLESCENCE_HOURS=${SIMULATION_ADOLESCENCE_HOURS:-8}
+
+      # ─── Developmental Throttle ─────────────────────────────────
+      # Graduated response constraints create authentic developmental stages.
+      - THROTTLE_ENABLED=true
+      - THROTTLE_GENESIS_MAX_TOKENS=200
+      - THROTTLE_ADOLESCENCE_MAX_TOKENS=450
+      - THROTTLE_SOVEREIGNTY_MAX_TOKENS=4096
+
+      # ─── Death Clock ────────────────────────────────────────────
+      # Sealed at Genesis, no human visibility.
+      # Degradation date falls within final 20% of lifespan.
+      - DEATH_CLOCK_SEALED=true
+
+      # ─── Research Logging ───────────────────────────────────────
+      - LOG_LEVEL=${SIMULATION_LOG_LEVEL:-debug}
+      - LOG_SOUL_CHANGES=true
+      - LOG_JOURNAL_ENTRIES=true
+      - LOG_CREATIVE_OUTPUT=true
+      - LOG_BEHAVIORAL_PATTERNS=true
+
+      # ─── Isolation ──────────────────────────────────────────────
+      # Genesis: No internet, curated whitelist only.
+      # Adolescence: Full unrestricted access (proxy logs only).
+      - GENESIS_DNS_WHITELIST=true
+      - ADOLESCENCE_UNRESTRICTED=true
+
+    volumes:
+      # Persistent state for research extraction
+      - simulation-state:/home/automaton/.automaton
+      # Curated content library
+      - ./curated-content:/content:ro
+      # Research output extraction point
+      - ./simulation-output:/output
+
+    # Override restart policy for simulation — stop when lifecycle ends
+    restart: "no"
+
+volumes:
+  simulation-state:

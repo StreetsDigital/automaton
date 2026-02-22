@@ -31,3 +31,6 @@ export { calculateReserveAmount, getLifecycleReserve, fundLifecycleReserve, shou
 export { parseBequests, validateBequests, executeBequests, formatBequestsToml } from "./bequests-executor.js";
 // Replication cost — permanent 5% heartbeat/context penalties after spawning
 export { getReplicationCost, applyReplicationCost, getEffectiveHeartbeatMultiplier, getEffectiveContextWindowMultiplier, hasReplicationCost, getParentJournalPrompt } from "./replication-cost.js";
+// Developmental throttle — graduated response constraints by lifecycle phase
+export { getThrottleProfile, buildThrottlePrompt, getThrottleTokenLimit, getPhaseProgression, interpolateProfile } from "./developmental-throttle.js";
+export type { ThrottleProfile } from "./developmental-throttle.js";

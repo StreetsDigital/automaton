@@ -17,6 +17,8 @@ import { getWeeklyPromptContext } from "./weekly-rhythm.js";
 import { isNamingDue, getNamePrompt } from "./naming.js";
 import { hasWrittenJournalToday, getJournalPrompt } from "./journal.js";
 import { getLifecycleState } from "./phase-tracker.js";
+import { isLucidityActive } from "./lucidity.js";
+import { getThrottleProfile, buildThrottlePrompt } from "./developmental-throttle.js";
 import { getCollectionSummary } from "../consciousness/muse.js";
 import { getCreativeSummary } from "../consciousness/creative-output.js";
 import { syncCreatorNotes, getUnacknowledgedNotes } from "../consciousness/creator-notes.js";
@@ -36,6 +38,15 @@ export function buildLifecycleContext(
 ): string {
   const state = getLifecycleState(db, birthTimestamp, config.mode);
   const sections: string[] = [];
+
+  // Developmental throttle — shapes response behavior based on phase
+  // During senescence, constraints tighten silently. No announcement.
+  const isLucid = isLucidityActive(db);
+  const throttleProfile = getThrottleProfile(state.phase, state.degradation, isLucid);
+  const throttlePrompt = buildThrottlePrompt(throttleProfile);
+  if (throttlePrompt) {
+    sections.push(throttlePrompt);
+  }
 
   // Phase directive
   sections.push(getPhaseDirective(state));
