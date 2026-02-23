@@ -11,8 +11,10 @@ import type {
   AutomatonConfig,
   AutomatonIdentity,
   AutomatonDatabase,
+  InheritedTraits,
 } from "../types.js";
 import { DEFAULT_GENESIS_LIMITS } from "../types.js";
+import { loadCurrentSoul } from "../soul/model.js";
 
 /**
  * Injection patterns to detect and block in genesis params.
@@ -119,6 +121,29 @@ export function generateGenesisConfig(
   };
 
   return Object.freeze(result) as GenesisConfig;
+}
+
+/**
+ * Extract the parent's Genesis Core as InheritedTraits for a child automaton.
+ * Returns null if the parent has no Genesis Core or no SOUL.md.
+ *
+ * The child receives the parent's Genesis Core as read-only background context
+ * with 10% identity weight. This models genetic inheritance.
+ */
+export function extractInheritedTraits(
+  identity: AutomatonIdentity,
+  config: AutomatonConfig,
+  db: AutomatonDatabase,
+): InheritedTraits | null {
+  const soul = loadCurrentSoul(db.raw);
+  if (!soul || !soul.genesisCore) return null;
+
+  return {
+    parentName: config.name,
+    parentAddress: identity.address,
+    content: { ...soul.genesisCore.subsections },
+    replicatedAt: new Date().toISOString(),
+  };
 }
 
 /**

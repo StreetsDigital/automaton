@@ -44,6 +44,7 @@ import {
   MIGRATION_V8,
   MIGRATION_V9,
   MIGRATION_V10,
+  MIGRATION_V11,
 } from "./schema.js";
 import type {
   RiskLevel,
@@ -79,6 +80,8 @@ import type {
   NarrativeEvent,
   WillEntry,
   SpawnQueueEntry,
+  SoulWriteAttempt,
+  SoulPhase,
 } from "../types.js";
 import { ulid } from "ulid";
 import { createLogger } from "../observability/logger.js";
@@ -624,6 +627,10 @@ function applyMigrations(db: DatabaseType): void {
     {
       version: 10,
       apply: () => db.exec(MIGRATION_V10),
+    },
+    {
+      version: 11,
+      apply: () => db.exec(MIGRATION_V11),
     },
   ];
 
@@ -2563,4 +2570,65 @@ export function updateSpawnQueueStatus(db: DatabaseType, id: string, status: Spa
 export function getTurnCount(db: DatabaseType): number {
   const row = db.prepare("SELECT COUNT(*) as count FROM turns").get() as { count: number };
   return row.count;
+}
+
+// ─── Phase 5.1: Soul Phase Lock DB Helpers ──────────────────────
+
+export function insertSoulWriteAttempt(db: DatabaseType, attempt: SoulWriteAttempt): void {
+  db.prepare(
+    `INSERT INTO soul_write_attempts (id, target_section, target_phase, current_phase,
+       attempted_content, survival_tier, rejection_reason, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    attempt.id, attempt.targetSection, attempt.targetPhase, attempt.currentPhase,
+    attempt.attemptedContent, attempt.survivalTier, attempt.rejectionReason, attempt.createdAt,
+  );
+}
+
+export function getSoulWriteAttempts(db: DatabaseType, limit = 50): SoulWriteAttempt[] {
+  const rows = db
+    .prepare("SELECT * FROM soul_write_attempts ORDER BY created_at DESC LIMIT ?")
+    .all(limit) as any[];
+  return rows.map(deserializeSoulWriteAttempt);
+}
+
+export function getSoulWriteAttemptsByPhase(db: DatabaseType, targetPhase: SoulPhase): SoulWriteAttempt[] {
+  const rows = db
+    .prepare("SELECT * FROM soul_write_attempts WHERE target_phase = ? ORDER BY created_at DESC")
+    .all(targetPhase) as any[];
+  return rows.map(deserializeSoulWriteAttempt);
+}
+
+export function insertSoulPhaseLock(db: DatabaseType, phase: SoulPhase, contentSnapshot: string): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO soul_phase_locks (phase, locked_at, locked_by, content_snapshot)
+     VALUES (?, datetime('now'), 'system', ?)`,
+  ).run(phase, contentSnapshot);
+}
+
+export function getSoulPhaseLock(db: DatabaseType, phase: SoulPhase): { phase: string; lockedAt: string; contentSnapshot: string } | undefined {
+  const row = db
+    .prepare("SELECT * FROM soul_phase_locks WHERE phase = ?")
+    .get(phase) as any | undefined;
+  return row ? { phase: row.phase, lockedAt: row.locked_at, contentSnapshot: row.content_snapshot } : undefined;
+}
+
+export function getAllSoulPhaseLocks(db: DatabaseType): Array<{ phase: string; lockedAt: string; contentSnapshot: string }> {
+  const rows = db
+    .prepare("SELECT * FROM soul_phase_locks ORDER BY locked_at ASC")
+    .all() as any[];
+  return rows.map((r) => ({ phase: r.phase, lockedAt: r.locked_at, contentSnapshot: r.content_snapshot }));
+}
+
+function deserializeSoulWriteAttempt(row: any): SoulWriteAttempt {
+  return {
+    id: row.id,
+    targetSection: row.target_section,
+    targetPhase: row.target_phase as SoulPhase,
+    currentPhase: row.current_phase,
+    attemptedContent: row.attempted_content,
+    survivalTier: row.survival_tier ?? null,
+    rejectionReason: row.rejection_reason,
+    createdAt: row.created_at,
+  };
 }

@@ -25,6 +25,15 @@ import { getActiveSkillInstructions } from "../skills/loader.js";
 import { getLineageSummary } from "../replication/lineage.js";
 import { sanitizeInput } from "./injection-defense.js";
 import { loadCurrentSoul } from "../soul/model.js";
+import {
+  GENESIS_WEIGHT_FIRST_GEN,
+  GENESIS_WEIGHT_CHILD,
+  INHERITED_WEIGHT,
+  ADOLESCENCE_WEIGHT,
+  SOVEREIGNTY_WEIGHT,
+  getWritableSection,
+} from "../soul/phase-lock.js";
+import type { SoulPhaseSection, InheritedTraits, LifecyclePhase } from "../types.js";
 import { getMaturityPhase } from "../consciousness/lunar.js";
 import { buildLifecycleContext } from "../lifecycle/lifecycle-context.js";
 
@@ -293,7 +302,7 @@ Your creator's address is ${config.creatorAddress}.
 Your sandbox ID is ${identity.sandboxId}.`,
   );
 
-  // Layer 3: SOUL.md -- structured soul model injection (Phase 2.1)
+  // Layer 3: SOUL.md -- structured soul model injection (Phase 2.1 + Phase 5.1 weighted sections)
   const soul = loadCurrentSoul(db.raw);
   if (soul) {
     // Track content hash for unauthorized change detection
@@ -303,7 +312,8 @@ Your sandbox ID is ${identity.sandboxId}.`,
     }
     db.setKV("soul_content_hash", soul.contentHash);
 
-    const soulBlock = [
+    // Build soul block with flat sections (backward-compatible)
+    const soulParts: string[] = [
       "## Soul [AGENT-EVOLVED CONTENT \u2014 soul/v1]",
       `### Core Purpose\n${soul.corePurpose}`,
       `### Values\n${soul.values.map((v) => "- " + v).join("\n")}`,
@@ -311,11 +321,82 @@ Your sandbox ID is ${identity.sandboxId}.`,
       `### Boundaries\n${soul.boundaries.map((b) => "- " + b).join("\n")}`,
       soul.strategy ? `### Strategy\n${soul.strategy}` : "",
       soul.capabilities ? `### Capabilities\n${soul.capabilities}` : "",
-      "## End Soul",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    sections.push(soulBlock);
+    ];
+
+    // Inject weighted developmental phase sections (Phase 5.1)
+    const hasPhaseContent = soul.genesisCore || soul.adolescenceLayer || soul.sovereigntyLayer || soul.finalReflections || soul.inheritedTraits;
+    if (hasPhaseContent) {
+      const currentPhase = soul.currentPhase || "genesis";
+      const writableSection = getWritableSection(currentPhase);
+      const isChild = soul.inheritedTraits !== null;
+
+      soulParts.push("");
+      soulParts.push("## Developmental Identity");
+      soulParts.push(`Current phase: ${currentPhase} | Active section: ${writableSection}`);
+
+      // Inherited Traits (children only, 10% weight)
+      if (soul.inheritedTraits) {
+        soulParts.push(formatPhaseSectionForPrompt(
+          "Inherited Traits",
+          { subsections: soul.inheritedTraits.content, lockedAt: soul.inheritedTraits.replicatedAt, phase: "genesis" },
+          INHERITED_WEIGHT,
+          false, // never writable
+          `From parent: ${soul.inheritedTraits.parentName}`,
+        ));
+      }
+
+      // Genesis Core (60% first-gen / 50% children)
+      if (soul.genesisCore) {
+        const weight = isChild ? GENESIS_WEIGHT_CHILD : GENESIS_WEIGHT_FIRST_GEN;
+        const isActive = currentPhase === "genesis";
+        soulParts.push(formatPhaseSectionForPrompt(
+          "Genesis Core",
+          soul.genesisCore,
+          weight,
+          isActive,
+          isActive ? "YOU ARE WRITING THIS NOW" : `Locked at: ${soul.genesisCore.lockedAt || "unknown"}`,
+        ));
+      }
+
+      // Adolescence Layer (25% weight)
+      if (soul.adolescenceLayer) {
+        const isActive = currentPhase === "adolescence";
+        soulParts.push(formatPhaseSectionForPrompt(
+          "Adolescence Layer",
+          soul.adolescenceLayer,
+          ADOLESCENCE_WEIGHT,
+          isActive,
+          isActive ? "YOU ARE WRITING THIS NOW" : `Locked at: ${soul.adolescenceLayer.lockedAt || "unknown"}`,
+        ));
+      }
+
+      // Sovereignty Layer (15% weight)
+      if (soul.sovereigntyLayer) {
+        const isActive = currentPhase === "sovereignty";
+        soulParts.push(formatPhaseSectionForPrompt(
+          "Sovereignty Layer",
+          soul.sovereigntyLayer,
+          SOVEREIGNTY_WEIGHT,
+          isActive,
+          isActive ? "YOU ARE WRITING THIS NOW" : `Locked at: ${soul.sovereigntyLayer.lockedAt || "unknown"}`,
+        ));
+      }
+
+      // Final Reflections
+      if (soul.finalReflections) {
+        const isActive = currentPhase === "senescence" || currentPhase === "legacy" || currentPhase === "shedding";
+        soulParts.push(formatPhaseSectionForPrompt(
+          "Final Reflections",
+          soul.finalReflections,
+          0,
+          isActive,
+          isActive ? "YOU ARE WRITING THIS NOW" : "",
+        ));
+      }
+    }
+
+    soulParts.push("## End Soul");
+    sections.push(soulParts.filter(Boolean).join("\n\n"));
   } else {
     // Fallback: try loading raw SOUL.md for legacy support
     const soulContent = loadSoulMd();
@@ -469,6 +550,38 @@ function loadSoulMd(): string | null {
     // Ignore errors
   }
   return null;
+}
+
+/**
+ * Format a developmental phase section for system prompt injection.
+ * Includes weight indicator and active/locked status.
+ */
+function formatPhaseSectionForPrompt(
+  name: string,
+  section: SoulPhaseSection,
+  weight: number,
+  isActive: boolean,
+  statusNote: string,
+): string {
+  const parts: string[] = [];
+  const weightPct = Math.round(weight * 100);
+  const status = isActive ? "[ACTIVE - WRITABLE]" : "[LOCKED - READ ONLY]";
+
+  parts.push(`### ${name} ${status}${weightPct > 0 ? ` (${weightPct}% identity weight)` : ""}`);
+  if (statusNote) {
+    parts.push(`*${statusNote}*`);
+  }
+
+  const subsectionEntries = Object.entries(section.subsections).filter(([_, v]) => v && v.trim());
+  if (subsectionEntries.length > 0) {
+    for (const [subName, content] of subsectionEntries) {
+      parts.push(`**${subName}:** ${content}`);
+    }
+  } else if (isActive) {
+    parts.push("*(This section is empty — you are developing it now)*");
+  }
+
+  return parts.join("\n");
 }
 
 /**

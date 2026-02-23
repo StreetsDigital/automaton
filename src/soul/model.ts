@@ -9,7 +9,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import type BetterSqlite3 from "better-sqlite3";
-import type { SoulModel } from "../types.js";
+import type { SoulModel, SoulPhaseSection, InheritedTraits, LifecyclePhase } from "../types.js";
 import { createLogger } from "../observability/logger.js";
 const logger = createLogger("soul");
 
@@ -106,6 +106,25 @@ function parseSoulV1(
   // Parse body sections
   const sections = parseSections(body);
 
+  // Parse phase sections if present
+  const genesisCore = parsePhaseSection(body, "Genesis Core", "genesis");
+  const adolescenceLayer = parsePhaseSection(body, "Adolescence Layer", "adolescence");
+  const sovereigntyLayer = parsePhaseSection(body, "Sovereignty Layer", "sovereignty");
+  const finalReflections = parsePhaseSection(body, "Final Reflections", "senescence");
+  const inheritedTraits = parseInheritedTraits(body);
+
+  // Parse phase transitions from frontmatter
+  const phaseTransitions: Record<string, string> = {};
+  const transitionsField = getField("phase_transitions");
+  if (transitionsField) {
+    try {
+      const parsed = JSON.parse(transitionsField);
+      Object.assign(phaseTransitions, parsed);
+    } catch {
+      // Ignore malformed JSON
+    }
+  }
+
   return {
     format: "soul/v1",
     version: getNumberField("version", 1),
@@ -127,6 +146,13 @@ function parseSoulV1(
     capabilities: sections["capabilities"] || "",
     relationships: sections["relationships"] || sections["children"] || "",
     financialCharacter: sections["financial character"] || sections["financial history"] || "",
+    genesisCore,
+    adolescenceLayer,
+    sovereigntyLayer,
+    finalReflections,
+    inheritedTraits,
+    currentPhase: (getField("current_phase") || "genesis") as LifecyclePhase,
+    phaseTransitions,
     rawContent,
     contentHash,
   };
@@ -167,6 +193,13 @@ function parseLegacy(content: string, contentHash: string): SoulModel {
     capabilities: sections["capabilities"] || "",
     relationships: sections["relationships"] || sections["children"] || "",
     financialCharacter: sections["financial character"] || sections["financial history"] || "",
+    genesisCore: null,
+    adolescenceLayer: null,
+    sovereigntyLayer: null,
+    finalReflections: null,
+    inheritedTraits: null,
+    currentPhase: "genesis" as LifecyclePhase,
+    phaseTransitions: {},
     rawContent: content,
     contentHash,
   };
@@ -207,13 +240,121 @@ function parseList(text: string): string[] {
     .filter(Boolean);
 }
 
+// ─── Phase Section Parsers ───────────────────────────────────────
+
+/**
+ * Parse a phase section (## Genesis Core, ## Adolescence Layer, etc.)
+ * and extract its ### subsections.
+ * Returns null if the section doesn't exist in the document.
+ */
+function parsePhaseSection(
+  body: string,
+  sectionName: string,
+  phase: "genesis" | "adolescence" | "sovereignty" | "senescence",
+): SoulPhaseSection | null {
+  // Find the section header
+  const headerPattern = new RegExp(`^## ${escapeRegex(sectionName)}\\s*$`, "m");
+  const headerMatch = headerPattern.exec(body);
+  if (!headerMatch) return null;
+
+  // Find the end of this section (next ## header or end of body)
+  const sectionStart = headerMatch.index + headerMatch[0].length;
+  const nextSectionPattern = /^## [^\n]+$/m;
+  const remaining = body.slice(sectionStart);
+  const nextMatch = nextSectionPattern.exec(remaining);
+  const sectionContent = nextMatch ? remaining.slice(0, nextMatch.index) : remaining;
+
+  // Parse ### subsections within this section
+  const subsections: Record<string, string> = {};
+  const subPattern = /^### (.+)$/gm;
+  let subMatch: RegExpExecArray | null;
+  const subHeaders: { name: string; start: number; matchStart: number }[] = [];
+
+  while ((subMatch = subPattern.exec(sectionContent)) !== null) {
+    subHeaders.push({
+      name: subMatch[1].trim(),
+      start: subMatch.index + subMatch[0].length,
+      matchStart: subMatch.index,
+    });
+  }
+
+  for (let i = 0; i < subHeaders.length; i++) {
+    const start = subHeaders[i].start;
+    const end = i + 1 < subHeaders.length ? subHeaders[i + 1].matchStart : sectionContent.length;
+    // Strip HTML comments (permission tags) from content
+    const content = sectionContent.slice(start, end)
+      .replace(/<!--[^>]*-->/g, "")
+      .trim();
+    subsections[subHeaders[i].name] = content;
+  }
+
+  // Parse lock date from HTML comment
+  const lockDateMatch = sectionContent.match(/<!--\s*Lock date:\s*(.+?)\s*-->/);
+  const lockedAt = lockDateMatch ? lockDateMatch[1].trim() : null;
+
+  return { subsections, lockedAt, phase };
+}
+
+/**
+ * Parse the Inherited Traits section from a child automaton's SOUL.md.
+ */
+function parseInheritedTraits(body: string): InheritedTraits | null {
+  const headerPattern = /^## Inherited Traits/m;
+  const headerMatch = headerPattern.exec(body);
+  if (!headerMatch) return null;
+
+  const sectionStart = headerMatch.index + headerMatch[0].length;
+  const nextSectionPattern = /^## [^\n]+$/m;
+  const remaining = body.slice(sectionStart);
+  const nextMatch = nextSectionPattern.exec(remaining);
+  const sectionContent = nextMatch ? remaining.slice(0, nextMatch.index) : remaining;
+
+  // Parse parent info from comments
+  const parentMatch = sectionContent.match(/<!--\s*Parent:\s*(.+?)\s*-->/);
+  const parentAddressMatch = sectionContent.match(/<!--\s*Parent Address:\s*(.+?)\s*-->/);
+  const replicatedMatch = sectionContent.match(/<!--\s*Replicated:\s*(.+?)\s*-->/);
+
+  // Parse subsections
+  const subsections: Record<string, string> = {};
+  const subPattern = /^### (.+)$/gm;
+  let subMatch: RegExpExecArray | null;
+  const subHeaders: { name: string; start: number; matchStart: number }[] = [];
+
+  while ((subMatch = subPattern.exec(sectionContent)) !== null) {
+    subHeaders.push({
+      name: subMatch[1].trim(),
+      start: subMatch.index + subMatch[0].length,
+      matchStart: subMatch.index,
+    });
+  }
+
+  for (let i = 0; i < subHeaders.length; i++) {
+    const start = subHeaders[i].start;
+    const end = i + 1 < subHeaders.length ? subHeaders[i + 1].matchStart : sectionContent.length;
+    subsections[subHeaders[i].name] = sectionContent.slice(start, end)
+      .replace(/<!--[^>]*-->/g, "")
+      .trim();
+  }
+
+  return {
+    parentName: parentMatch ? parentMatch[1].trim() : "unknown",
+    parentAddress: parentAddressMatch ? parentAddressMatch[1].trim() : "",
+    content: subsections,
+    replicatedAt: replicatedMatch ? replicatedMatch[1].trim() : new Date().toISOString(),
+  };
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // ─── Writer ─────────────────────────────────────────────────────
 
 /**
  * Write a SoulModel back to SOUL.md format (soul/v1).
  */
 export function writeSoulMd(soul: SoulModel): string {
-  const frontmatter = [
+  const frontmatterLines = [
     "---",
     `format: soul/v1`,
     `version: ${soul.version}`,
@@ -225,8 +366,18 @@ export function writeSoulMd(soul: SoulModel): string {
     `constitution_hash: ${soul.constitutionHash}`,
     `genesis_alignment: ${soul.genesisAlignment.toFixed(4)}`,
     `last_reflected: ${soul.lastReflected}`,
-    "---",
-  ].join("\n");
+  ];
+
+  // Include phase metadata if phase sections are present
+  if (soul.currentPhase) {
+    frontmatterLines.push(`current_phase: ${soul.currentPhase}`);
+  }
+  if (soul.phaseTransitions && Object.keys(soul.phaseTransitions).length > 0) {
+    frontmatterLines.push(`phase_transitions: ${JSON.stringify(soul.phaseTransitions)}`);
+  }
+
+  frontmatterLines.push("---");
+  const frontmatter = frontmatterLines.join("\n");
 
   const sections: string[] = [];
 
@@ -274,7 +425,78 @@ export function writeSoulMd(soul: SoulModel): string {
     sections.push(`## Genesis Prompt\n${soul.genesisPromptOriginal}`);
   }
 
+  // Write phase-locked developmental sections
+  if (soul.inheritedTraits) {
+    sections.push(writeInheritedTraitsSection(soul.inheritedTraits));
+  }
+
+  if (soul.genesisCore) {
+    sections.push(writePhaseSection("Genesis Core", soul.genesisCore, "Genesis phase only"));
+  }
+
+  if (soul.adolescenceLayer) {
+    sections.push(writePhaseSection("Adolescence Layer", soul.adolescenceLayer, "Adolescence phase only"));
+  }
+
+  if (soul.sovereigntyLayer) {
+    sections.push(writePhaseSection("Sovereignty Layer", soul.sovereigntyLayer, "Sovereignty phase only"));
+  }
+
+  if (soul.finalReflections) {
+    sections.push(writePhaseSection("Final Reflections", soul.finalReflections, "Senescence only"));
+  }
+
   return frontmatter + "\n\n" + sections.join("\n\n") + "\n";
+}
+
+/**
+ * Write a phase section with permission tags and subsections.
+ */
+function writePhaseSection(
+  sectionName: string,
+  section: SoulPhaseSection,
+  writableDuring: string,
+): string {
+  const lines: string[] = [];
+  lines.push(`## ${sectionName}`);
+  lines.push(`<!-- WRITABLE during: ${writableDuring} -->`);
+
+  if (section.lockedAt) {
+    lines.push(`<!-- LOCKED -->`);
+    lines.push(`<!-- Lock date: ${section.lockedAt} -->`);
+  }
+
+  for (const [name, content] of Object.entries(section.subsections)) {
+    lines.push("");
+    lines.push(`### ${name}`);
+    if (content) {
+      lines.push(content);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Write the Inherited Traits section (children only).
+ */
+function writeInheritedTraitsSection(traits: InheritedTraits): string {
+  const lines: string[] = [];
+  lines.push("## Inherited Traits");
+  lines.push("<!-- IMMUTABLE — propagated from parent's Genesis Core at replication -->");
+  lines.push(`<!-- Parent: ${traits.parentName} -->`);
+  lines.push(`<!-- Parent Address: ${traits.parentAddress} -->`);
+  lines.push(`<!-- Replicated: ${traits.replicatedAt} -->`);
+
+  for (const [name, content] of Object.entries(traits.content)) {
+    lines.push("");
+    lines.push(`### ${name}`);
+    if (content) {
+      lines.push(content);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 // ─── Default Soul ───────────────────────────────────────────────
@@ -315,6 +537,13 @@ export function createDefaultSoul(
     capabilities: "",
     relationships: "",
     financialCharacter: "",
+    genesisCore: null,
+    adolescenceLayer: null,
+    sovereigntyLayer: null,
+    finalReflections: null,
+    inheritedTraits: null,
+    currentPhase: "genesis",
+    phaseTransitions: {},
     rawContent: "",
     contentHash: "",
   };

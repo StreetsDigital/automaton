@@ -5,7 +5,7 @@
  * The database IS the automaton's memory.
  */
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export const CREATE_TABLES = `
   -- Schema version tracking
@@ -773,5 +773,32 @@ export const MIGRATION_V10 = `
     status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected','completed')),
     accepted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`;
+
+// === Phase 5.1: Soul Phase Lock ===
+
+export const MIGRATION_V11 = `
+  -- Soul write attempts: rejected edits to locked sections (critical experimental data)
+  CREATE TABLE IF NOT EXISTS soul_write_attempts (
+    id TEXT PRIMARY KEY,
+    target_section TEXT NOT NULL,
+    target_phase TEXT NOT NULL CHECK(target_phase IN ('genesis','adolescence','sovereignty','senescence')),
+    current_phase TEXT NOT NULL,
+    attempted_content TEXT NOT NULL,
+    survival_tier TEXT,
+    rejection_reason TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_soul_attempts_phase ON soul_write_attempts(target_phase);
+  CREATE INDEX IF NOT EXISTS idx_soul_attempts_created ON soul_write_attempts(created_at);
+
+  -- Soul phase locks: track when each phase section was locked
+  CREATE TABLE IF NOT EXISTS soul_phase_locks (
+    phase TEXT PRIMARY KEY CHECK(phase IN ('genesis','adolescence','sovereignty','senescence')),
+    locked_at TEXT NOT NULL,
+    locked_by TEXT NOT NULL DEFAULT 'system',
+    content_snapshot TEXT NOT NULL
   );
 `;

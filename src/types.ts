@@ -1199,6 +1199,14 @@ export interface SoulModel {
   capabilities: string; // auto-populated
   relationships: string; // auto-populated
   financialCharacter: string; // auto-populated + agent-set
+  // Phase-locked developmental sections (Phase 5.1)
+  genesisCore: SoulPhaseSection | null;
+  adolescenceLayer: SoulPhaseSection | null;
+  sovereigntyLayer: SoulPhaseSection | null;
+  finalReflections: SoulPhaseSection | null;
+  inheritedTraits: InheritedTraits | null;
+  currentPhase: LifecyclePhase;
+  phaseTransitions: Record<string, string>; // phase -> ISO timestamp
   // Metadata
   rawContent: string; // original SOUL.md content
   contentHash: string; // SHA-256 of rawContent
@@ -1244,6 +1252,41 @@ export const DEFAULT_SOUL_CONFIG: SoulConfig = {
   requireCreatorApprovalForPurposeChange: false,
   enableSoulReflection: true,
 };
+
+// === Phase 5.1: Soul Phase Lock Types ===
+
+/** A developmental phase that can own a SOUL.md section. */
+export type SoulPhase = "genesis" | "adolescence" | "sovereignty" | "senescence";
+
+/** Subsection content within a developmental phase section. */
+export interface SoulPhaseSection {
+  /** Subsection name -> content. e.g. "Temperament" -> "Curious and impulsive..." */
+  subsections: Record<string, string>;
+  /** ISO timestamp when this section was locked, null if still writable. */
+  lockedAt: string | null;
+  /** Which lifecycle phase this section belongs to. */
+  phase: SoulPhase;
+}
+
+/** A record of a rejected write attempt to a locked SOUL.md section. */
+export interface SoulWriteAttempt {
+  id: string;
+  targetSection: string;
+  targetPhase: SoulPhase;
+  currentPhase: LifecyclePhase;
+  attemptedContent: string;
+  survivalTier: string | null;
+  rejectionReason: string;
+  createdAt: string;
+}
+
+/** Inherited traits propagated from parent's Genesis Core at replication. */
+export interface InheritedTraits {
+  parentName: string;
+  parentAddress: string;
+  content: Record<string, string>;
+  replicatedAt: string;
+}
 
 // === Phase 2.5: Consciousness System Types ===
 

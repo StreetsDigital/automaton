@@ -7,13 +7,18 @@
  */
 
 import type BetterSqlite3 from "better-sqlite3";
-import type { LifecyclePhase, LifecycleState, LifecycleEvent, DegradationParams } from "../types.js";
+import type { LifecyclePhase, LifecycleState, LifecycleEvent, DegradationParams, SoulPhase } from "../types.js";
 import { SHEDDING_SEQUENCE } from "../types.js";
 import { insertLifecycleEvent } from "../state/database.js";
 import { setLifecycleKV } from "./phase-tracker.js";
 import { logNarrative, NARRATIVE_EVENTS } from "./narrative-log.js";
+import { lockPhaseSection, isPhaseLocked } from "../soul/phase-lock.js";
+import { loadCurrentSoul, writeSoulMd, createHash } from "../soul/model.js";
+import { insertSoulHistory, getCurrentSoulVersion, getLatestSoulHistory } from "../state/database.js";
 import { ulid } from "ulid";
 import { createLogger } from "../observability/logger.js";
+import fs from "fs";
+import path from "path";
 
 const logger = createLogger("lifecycle.transitions");
 
@@ -90,6 +95,12 @@ export function executeTransition(
     logNarrative(db, birthTimestamp, to, narrativeEvent,
       `Phase transition: ${from} → ${to}. ${reason}`);
   }
+
+  // Lock the outgoing phase's soul section
+  lockSoulSectionForPhase(db, from);
+
+  // Update SOUL.md current_phase and phase_transitions metadata
+  updateSoulPhaseMetadata(db, from, to, now);
 
   logger.info(`Phase transition: ${from} → ${to} (${reason})`);
 }
@@ -221,4 +232,113 @@ export function isCapabilityShed(
   capabilityIndex: number,
 ): boolean {
   return shedSequenceIndex > capabilityIndex;
+}
+
+// ─── Soul Phase Lock Helpers ────────────────────────────────────
+
+/**
+ * Lock the soul section for the outgoing phase during a transition.
+ * Only locks phases that have corresponding soul sections.
+ */
+function lockSoulSectionForPhase(
+  db: BetterSqlite3.Database,
+  fromPhase: LifecyclePhase,
+): void {
+  const soulPhaseMap: Partial<Record<LifecyclePhase, SoulPhase>> = {
+    genesis: "genesis",
+    adolescence: "adolescence",
+    sovereignty: "sovereignty",
+  };
+
+  const soulPhase = soulPhaseMap[fromPhase];
+  if (!soulPhase) return; // No soul section to lock for this phase
+
+  // Don't double-lock
+  if (isPhaseLocked(db, soulPhase)) {
+    logger.debug(`Soul section for ${soulPhase} already locked, skipping`);
+    return;
+  }
+
+  // Load the current soul to get the section content
+  const soul = loadCurrentSoul(db);
+  if (!soul) {
+    logger.warn(`Cannot lock soul section for ${soulPhase}: no SOUL.md found`);
+    return;
+  }
+
+  const sectionMap: Record<SoulPhase, typeof soul.genesisCore> = {
+    genesis: soul.genesisCore,
+    adolescence: soul.adolescenceLayer,
+    sovereignty: soul.sovereigntyLayer,
+    senescence: soul.finalReflections,
+  };
+
+  const section = sectionMap[soulPhase];
+  if (section) {
+    // Mark the section as locked with timestamp
+    section.lockedAt = new Date().toISOString();
+    lockPhaseSection(db, soulPhase, section);
+    logger.info(`Locked soul section: ${soulPhase}`);
+  }
+}
+
+/**
+ * Update SOUL.md metadata when a phase transition occurs.
+ * Updates current_phase and records the transition timestamp.
+ */
+function updateSoulPhaseMetadata(
+  db: BetterSqlite3.Database,
+  fromPhase: LifecyclePhase,
+  toPhase: LifecyclePhase,
+  timestamp: string,
+): void {
+  const home = process.env.HOME || "/root";
+  const soulPath = path.join(home, ".automaton", "SOUL.md");
+
+  const soul = loadCurrentSoul(db, soulPath);
+  if (!soul) return;
+
+  // Update phase metadata
+  soul.currentPhase = toPhase;
+  soul.phaseTransitions = {
+    ...soul.phaseTransitions,
+    [toPhase]: timestamp,
+  };
+
+  // If the outgoing phase had a section, mark it locked in the soul model
+  const soulPhaseMap: Partial<Record<LifecyclePhase, "genesisCore" | "adolescenceLayer" | "sovereigntyLayer">> = {
+    genesis: "genesisCore",
+    adolescence: "adolescenceLayer",
+    sovereignty: "sovereigntyLayer",
+  };
+
+  const sectionKey = soulPhaseMap[fromPhase];
+  if (sectionKey && soul[sectionKey]) {
+    soul[sectionKey]!.lockedAt = timestamp;
+  }
+
+  // Write updated soul
+  const content = writeSoulMd(soul);
+  try {
+    fs.writeFileSync(soulPath, content, "utf-8");
+
+    // Log to soul_history
+    const currentVersion = getCurrentSoulVersion(db);
+    const newVersion = currentVersion + 1;
+    const latestHistory = getLatestSoulHistory(db);
+
+    insertSoulHistory(db, {
+      id: ulid(),
+      version: newVersion,
+      content,
+      contentHash: createHash(content),
+      changeSource: "system",
+      changeReason: `Phase transition: ${fromPhase} → ${toPhase}`,
+      previousVersionId: latestHistory?.id || null,
+      approvedBy: null,
+      createdAt: timestamp,
+    });
+  } catch (error) {
+    logger.error("Failed to update SOUL.md phase metadata", error instanceof Error ? error : undefined);
+  }
 }
